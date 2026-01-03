@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QRコード0から解析くん Real Decoder (Full Dump)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+    <style>
+        body {
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background-color: #1e272e;
+            color: #d2dae2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        h1 { color: #ffdd59; text-shadow: 2px 2px 0 #000; margin-bottom: 10px; }
+
+        .main-wrapper {
+            display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%; max-width: 1400px;
+        }
+        .left-col { flex: 0 0 auto; display: flex; flex-direction: column; gap: 10px; align-items: center;}
+        .right-col { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 400px;}
+
+        .canvas-container {
+            position: relative; background: #fff; padding: 10px; border-radius: 4px; box-shadow: 0 0 15px rgba(0,0,0,0.8);
+            cursor: crosshair;
+        }
+        canvas { image-rendering: pixelated; border: 1px solid #808e9b; display: block; }
+        
+        #duck-scanner {
+            position: absolute; width: 18px; height: 18px; pointer-events: none;
+            transform: translate(-50%, -50%); transition: left 0.08s linear, top 0.08s linear; display: none; z-index: 20;
+        }
+        .duck-body { position: absolute; width: 100%; height: 100%; background: #ffd32a; border-radius: 50%; border: 2px solid #e67e22; box-shadow: 0 0 5px yellow;}
+        .duck-beak { position: absolute; top: 50%; right: -4px; width: 8px; height: 6px; background: #e67e22; border-radius: 2px; transform: translateY(-50%); }
+        .duck-eye { position: absolute; top: 30%; right: 4px; width: 3px; height: 3px; background: #000; border-radius: 50%; }
+
+        .step-panel {
+            display: flex; gap: 10px; margin-bottom: 5px; background: #485460; padding: 10px; border-radius: 8px; flex-wrap: wrap; justify-content: center; align-items: center;
+        }
+        button, .file-btn, select {
+            padding: 8px 12px; font-weight: bold; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; transition: all 0.1s;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        select { background: #d2dae2; color: #1e272e; padding: 8px; outline: none;}
+
+        .btn-blue { background: #0fbcf9; color: #1e272e; }
+        .btn-purple { background: #9c88ff; color: #1e272e; }
+        .btn-mask { background: #be2edd; color: white; }
+        .btn-scan { background: #ffdd59; color: #1e272e; }
+        .btn-toggle { background: #ff5e57; color: white; display: none;}
+
+        .info-box {
+            background: #2d3436; padding: 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
+            border: 1px solid #4b4b4b; position: relative; margin-bottom: 10px; display: flex; flex-direction: column;
+        }
+        .box-title { color: #00d2d3; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 2px; font-size: 0.8rem; font-weight: bold;}
+
+        /* バイナリストリーム */
+        .binary-stream {
+            height: 60px; overflow-y: auto; font-size: 0.9rem; letter-spacing: 1px; word-break: break-all; color: #808e9b; line-height: 1.4;
+            background: #000; padding: 5px; border-radius: 4px;
+        }
+        .bit { display: inline-block; padding: 0 1px;}
+        .bit-new { color: #fff; font-weight: bold; text-shadow: 0 0 4px #00d2d3; }
+
+        /* 構造解析エリア */
+        .structure-area {
+            height: 300px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start;
+            background: #1e272e; padding: 5px;
+        }
+        .bit-block { 
+            padding: 4px 6px; border-radius: 4px; font-size: 0.8rem; text-align: left; display: flex; flex-direction: column; 
+            min-width: 85px; animation: popIn 0.1s forwards;
+            background: #333; border-left: 3px solid #777;
+            color: #ecf0f1;
+        }
+        @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        .blk-label { font-size: 0.65rem; opacity: 0.7; margin-bottom: 2px; text-transform: uppercase; color: #dfe6e9;}
+        .blk-bin   { font-size: 0.7rem; color: #74b9ff; letter-spacing: 0.5px; margin-bottom: 1px;}
+        .blk-hex   { font-size: 0.75rem; color: #ffdd59; font-weight: bold; margin-bottom: 1px;}
+        .blk-char  { font-size: 1.1rem; font-weight: bold; color: #fff; text-align: center; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 2px; padding-top: 2px;}
+
+        .type-mode { border-color: #ff5e57; background: rgba(255, 94, 87, 0.1); }
+        .type-len  { border-color: #0fbcf9; background: rgba(15, 188, 249, 0.1); }
+        .type-data { border-color: #05c46b; background: rgba(5, 196, 107, 0.1); }
+        .type-term { border-color: #ffa801; background: rgba(255, 168, 1, 0.1); }
+        .type-pad  { border-color: #57606f; background: rgba(87, 96, 111, 0.3); color: #aaa; }
+        .type-ecc  { border-color: #808e9b; background: rgba(128, 142, 155, 0.1); opacity: 0.9; }
+
+        .log-area { 
+            height: 150px; overflow-y: auto; font-size: 0.85rem; line-height: 1.5; color: #ccc; 
+            font-family: 'Zen Maru Gothic', sans-serif;
+            background: #1e272e; border-top: 1px solid #555;
+        }
+        .log-line { margin-bottom: 2px; border-left: 2px solid #444; padding-left: 6px; }
+        .log-code { font-family: 'JetBrains Mono'; color: #00d2d3; margin: 0 2px; background:rgba(0,0,0,0.3); padding:0 2px;}
+        .log-val { font-weight: bold; color: #ffdd59; }
+        .log-err { color: #ff5e57; font-weight: bold; }
+        .log-ok  { color: #05c46b; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <h1>QRコード0から解析くん</h1>
+
+    <div class="step-panel">
+        <label class="file-btn btn-blue">
+            1. 画像読込
+            <input type="file" id="fileInput" accept="image/*" style="display:none">
+        </label>
+        
+        <button id="btnFormat" class="btn-purple" onclick="stepFormatInfo()" disabled>2. Mask特定</button>
+
+        <div style="display:flex; flex-direction:column; align-items:center; margin:0 5px;">
+            <select id="maskSelect" onchange="manualMaskChange()">
+                <option value="0">Mask 0 (x+y)%2=0</option>
+                <option value="1">Mask 1 y%2=0</option>
+                <option value="2">Mask 2 x%3=0</option>
+                <option value="3">Mask 3 (x+y)%3=0</option>
+                <option value="4">Mask 4 (y/2+x/3)%2=0</option>
+                <option value="5">Mask 5 ((xy)%2+(xy)%3)=0</option>
+                <option value="6">Mask 6 (((xy)%2+(xy)%3)%2)=0</option>
+                <option value="7">Mask 7 (((x+y)%2+(xy)%3)%2)=0</option>
+            </select>
+        </div>
+
+        <button id="btnMask" class="btn-mask" onclick="stepMask()" disabled>3. マスク適用</button>
+        <button id="btnToggle" class="btn-toggle" onclick="toggleView()">👁️ 比較</button>
+        <button id="btnScan" class="btn-scan" onclick="stepScan()" disabled>4. 解析実行</button>
+    </div>
+    
+    <div style="margin-bottom: 15px; color:#ccc; font-size:0.9rem;">
+        あひる走査速度: <input type="range" id="speedSlider" min="1" max="100" value="80">
+    </div>
+
+    <div class="main-wrapper">
+        <div class="left-col">
+            <div class="canvas-container">
+                <canvas id="qrCanvas"></canvas>
+                <div id="duck-scanner">
+                    <div class="duck-beak"></div><div class="duck-body"></div><div class="duck-eye"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="right-col">
+            <div class="info-box" style="flex: 2;">
+                <div class="box-title">構造データ (Decoded Structure)</div>
+                <div id="structureDisplay" class="structure-area"></div>
+            </div>
+
+            <div class="info-box" style="flex: 1;">
+                <div class="box-title">System Log</div>
+                <div id="logDisplay" class="log-area">
+                    <div class="log-line">画像を読み込んでください。</div>
+                </div>
+            </div>
+            
+            <div class="info-box" style="flex: 0 0 auto;">
+                 <div class="box-title">Raw Bit Stream</div>
+                 <div id="binaryDisplay" class="binary-stream">...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('qrCanvas');
+        const ctx = canvas.getContext('2d');
+        const logDisplay = document.getElementById('logDisplay');
+        const binDisplay = document.getElementById('binaryDisplay');
+        const structDisplay = document.getElementById('structureDisplay');
+        const btnToggle = document.getElementById('btnToggle');
+        const maskSelect = document.getElementById('maskSelect');
+
+        const cellSize = 15;
+        let gridSize = 21;
+        
+        let qrMatrix = [];      
+        let correctMatrix = []; 
+        let isViewMasked = true; 
+        let currentMaskID = 0;
+        
+        const maskPatterns = [
+            (x, y) => (x + y) % 2 == 0,
+            (x, y) => y % 2 == 0,
+            (x, y) => x % 3 == 0,
+            (x, y) => (x + y) % 3 == 0,
+            (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2 == 0,
+            (x, y) => ((x * y) % 2) + ((x * y) % 3) == 0,
+            (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 == 0,
+            (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 == 0
+        ];
+
+        const formatInfoCoords1 = [
+            {x:8, y:0}, {x:8, y:1}, {x:8, y:2}, {x:8, y:3}, {x:8, y:4}, {x:8, y:5}, {x:8, y:7}, 
+            {x:8, y:8}, {x:7, y:8}, {x:5, y:8}, {x:4, y:8}, {x:3, y:8}, {x:2, y:8}, {x:1, y:8}, {x:0, y:8}
+        ];
+        
+        function getFormatInfoCoords2(size) {
+            return [
+                {x:8, y:size-1}, {x:8, y:size-2}, {x:8, y:size-3}, {x:8, y:size-4}, {x:8, y:size-5}, {x:8, y:size-6}, {x:8, y:size-7},
+                {x:size-8, y:8}, {x:size-7, y:8}, {x:size-6, y:8}, {x:size-5, y:8}, {x:size-4, y:8}, {x:size-3, y:8}, {x:size-2, y:8}, {x:size-1, y:8}
+            ];
+        }
+
+        const FORMAT_INFO_MASK = 0b101010000010010;
+
+        function initCanvas(size = 21) {
+            gridSize = size;
+            canvas.width = gridSize * cellSize;
+            canvas.height = gridSize * cellSize;
+        }
+
+        function drawGrid(matrix, overlayType) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    const val = matrix[y][x];
+                    
+                    if (overlayType === 'format1' && isFormatInfoPixel(x,y,1)) {
+                         ctx.fillStyle = '#9c88ff';
+                    } else if (overlayType === 'format2' && isFormatInfoPixel(x,y,2)) {
+                         ctx.fillStyle = '#fab1a0'; 
+                    } else if (overlayType === 'mask' && val === 1) {
+                        ctx.fillStyle = 'rgba(190, 46, 221, 0.6)';
+                    } else {
+                        ctx.fillStyle = val ? '#000' : '#fff';
+                    }
+                    
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    ctx.strokeStyle = '#555';
+                    ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+        }
+        
+        function isFormatInfoPixel(x, y, type) {
+            if (type === 1) return formatInfoCoords1.some(c => c.x === x && c.y === y);
+            if (type === 2) return getFormatInfoCoords2(gridSize).some(c => c.x === x && c.y === y);
+            return false;
+        }
+
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const img = new Image();
+                img.onload = () => processImage(img);
+                img.src = ev.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+
+        function processImage(img) {
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            const scale = Math.min(1000 / img.width, 1000 / img.height, 1);
+            tempCanvas.width = img.width * scale;
+            tempCanvas.height = img.height * scale;
+            tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
+            
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height);
+            
+            if (code) {
+                gridSize = code.location.dimension || 21;
+                const initialHint = (code.maskPattern !== undefined) ? code.maskPattern : 0;
+                maskSelect.value = initialHint;
+                
+                initCanvas(gridSize);
+                qrMatrix = extractQRMatrix(imageData, code.location, gridSize);
+                correctMatrix = JSON.parse(JSON.stringify(qrMatrix)); 
+
+                drawGrid(qrMatrix);
+                
+                logDisplay.innerHTML = "";
+                addLog(`読取成功: Grid ${gridSize}x${gridSize}`);
+                
+                document.getElementById('btnFormat').disabled = false;
+                document.getElementById('btnMask').disabled = true;
+                document.getElementById('btnScan').disabled = true;
+                btnToggle.style.display = 'none';
+                isViewMasked = true;
+                binDisplay.innerHTML = "";
+                structDisplay.innerHTML = "";
+            } else {
+                alert("QRコード認識失敗");
+            }
+        }
+
+        function extractQRMatrix(imgData, location, size) {
+            const matrix = [];
+            const w = imgData.width;
+            const data = imgData.data;
+            const { topLeftCorner, topRightCorner, bottomRightCorner, bottomLeftCorner } = location;
+
+            for (let y = 0; y < size; y++) {
+                const row = [];
+                for (let x = 0; x < size; x++) {
+                    const u = (x + 0.5) / size;
+                    const v = (y + 0.5) / size;
+                    const topX = topLeftCorner.x + (topRightCorner.x - topLeftCorner.x) * u;
+                    const topY = topLeftCorner.y + (topRightCorner.y - topLeftCorner.y) * u;
+                    const bottomX = bottomLeftCorner.x + (bottomRightCorner.x - bottomLeftCorner.x) * u;
+                    const bottomY = bottomLeftCorner.y + (bottomRightCorner.y - bottomLeftCorner.y) * u;
+                    const px = Math.floor(topX + (bottomX - topX) * v);
+                    const py = Math.floor(topY + (bottomY - topY) * v);
+
+                    let isBlack = 0;
+                    if (px >= 0 && px < w && py >= 0 && py < imgData.height) {
+                        const offset = (py * w + px) * 4;
+                        if (data[offset] < 128) isBlack = 1; 
+                    }
+                    row.push(isBlack);
+                }
+                matrix.push(row);
+            }
+            return matrix;
+        }
+
+        async function stepFormatInfo() {
+            addLog("--- Format Info 解析 ---");
+            const res1 = await scanFormatBits(formatInfoCoords1);
+            const decoded1 = res1.val ^ FORMAT_INFO_MASK;
+            const mask1 = (decoded1 >> 10) & 0b111;
+            addLog(`Primary読取: Raw=0x${res1.val.toString(16)} -> <span class="log-code">Mask ${mask1}</span>`);
+            
+            const coords2 = getFormatInfoCoords2(gridSize);
+            const res2 = await scanFormatBits(coords2);
+            const decoded2 = res2.val ^ FORMAT_INFO_MASK;
+            const mask2 = (decoded2 >> 10) & 0b111;
+            addLog(`Backup読取: Raw=0x${res2.val.toString(16)} -> <span class="log-code">Mask ${mask2}</span>`);
+
+            let finalDecision = mask1;
+            if (mask1 !== mask2) {
+                addLog(`<span class="log-err">不一致発生: Backup(Mask ${mask2})を優先採用します。</span>`);
+                finalDecision = mask2;
+            } else {
+                addLog(`<span class="log-ok">一致確認: Mask ${mask1} を採用します。</span>`);
+            }
+
+            maskSelect.value = finalDecision;
+            currentMaskID = finalDecision;
+            document.getElementById('btnMask').disabled = false;
+        }
+
+        async function scanFormatBits(coords) {
+            let rawBits = 0;
+            let duck = document.getElementById('duck-scanner');
+            duck.style.display = 'block';
+            for (let i = 0; i < 15; i++) {
+                const c = coords[i];
+                moveDuck(c.x, c.y);
+                rawBits = (rawBits << 1) | qrMatrix[c.y][c.x];
+                await sleep(20); // 少し速く
+            }
+            duck.style.display = 'none';
+            return { val: rawBits };
+        }
+
+        function applyMaskCalc() {
+            currentMaskID = parseInt(maskSelect.value);
+            const patternFunc = maskPatterns[currentMaskID];
+            correctMatrix = JSON.parse(JSON.stringify(qrMatrix));
+            for(let y=0; y<gridSize; y++) {
+                for(let x=0; x<gridSize; x++) {
+                    if (isFunctionPattern(x, y)) continue;
+                    if (patternFunc(x, y)) correctMatrix[y][x] = qrMatrix[y][x] ^ 1; 
+                }
+            }
+        }
+
+        async function stepMask() {
+            applyMaskCalc();
+            const tempMaskVis = JSON.parse(JSON.stringify(Array(gridSize).fill().map(()=>Array(gridSize).fill(0))));
+            const patternFunc = maskPatterns[currentMaskID];
+             for(let y=0; y<gridSize; y++) {
+                for(let x=0; x<gridSize; x++) {
+                    if (!isFunctionPattern(x,y) && patternFunc(x,y)) tempMaskVis[y][x] = 1;
+                }
+            }
+            
+            addLog(`マスク適用中... Pattern ${currentMaskID}`);
+            drawGrid(tempMaskVis, 'mask');
+            await sleep(400);
+            
+            drawGrid(correctMatrix);
+            isViewMasked = false;
+            
+            document.getElementById('btnMask').disabled = true;
+            document.getElementById('btnScan').disabled = false;
+            btnToggle.style.display = 'inline-block';
+            updateToggleBtn();
+            addLog("マスク解除完了。");
+        }
+
+        function manualMaskChange() {
+            document.getElementById('btnMask').disabled = false;
+            document.getElementById('btnScan').disabled = true;
+        }
+
+        function toggleView() {
+            if (isViewMasked) {
+                drawGrid(correctMatrix);
+                isViewMasked = false;
+            } else {
+                drawGrid(qrMatrix);
+                isViewMasked = true;
+            }
+            updateToggleBtn();
+        }
+
+        function updateToggleBtn() {
+            btnToggle.innerText = isViewMasked ? "👁️ 元画像" : "👁️ 解除後";
+            btnToggle.style.background = isViewMasked ? "#ff5e57" : "#05c46b";
+        }
+
+        async function stepScan() {
+            const duck = document.getElementById('duck-scanner');
+            if(isViewMasked) toggleView();
+            btnToggle.disabled = true;
+            document.getElementById('btnScan').disabled = true;
+            duck.style.display = 'block';
+            
+            binDisplay.innerHTML = "";
+            structDisplay.innerHTML = "";
+            addLog("--- 解析開始 ---");
+
+            let buffer = "";
+            let state = "MODE"; 
+            let dataLen = 0;
+            let currentCount = 0;
+            let decodedBytes = []; 
+            let modeType = "UNKNOWN";
+
+            let x = gridSize - 1;
+            let y = gridSize - 1;
+            let goingUp = true;
+
+            while (x >= 0) {
+                if (x === 6) { x--; continue; } 
+
+                for (let col = x; col >= x - 1; col--) {
+                    if (col < 0) break;
+                    
+                    if (!isFunctionPattern(col, y)) {
+                        moveDuck(col, y);
+                        const bitVal = correctMatrix[y][col];
+                        
+                        const bitSpan = document.createElement('span');
+                        bitSpan.innerText = bitVal;
+                        bitSpan.className = "bit bit-new";
+                        binDisplay.appendChild(bitSpan);
+                        binDisplay.scrollTop = binDisplay.scrollHeight;
+
+                        buffer += bitVal;
+
+                        // --- State Machine ---
+                        if (state === "MODE" && buffer.length === 4) {
+                            const modeVal = parseInt(buffer, 2);
+                            let modeStr = "Unknown";
+                            let color = "type-err";
+                            
+                            if(buffer === "0001") { modeStr = "Numeric"; modeType="NUM"; color="type-mode";}
+                            if(buffer === "0010") { modeStr = "AlphaNum"; modeType="ALPH"; color="type-mode";}
+                            if(buffer === "0100") { modeStr = "Byte"; modeType="BYTE"; color="type-mode";}
+                            if(buffer === "1000") { modeStr = "Kanji"; modeType="KANJI"; color="type-mode";}
+                            
+                            addBlock("MODE", buffer, `0x${modeVal.toString(16).toUpperCase()}`, modeStr, color);
+                            addLog(`Mode: ${modeStr}`);
+                            buffer = "";
+                            state = "LEN";
+                        }
+                        else if (state === "LEN") {
+                            let lenBits = 8;
+                            if (modeType === "NUM") lenBits = 10;
+                            if (modeType === "ALPH") lenBits = 9;
+                            
+                            if (buffer.length === lenBits) {
+                                dataLen = parseInt(buffer, 2);
+                                addBlock("LENGTH", buffer, `0x${dataLen.toString(16).toUpperCase()}`, `Len:${dataLen}`, "type-len");
+                                buffer = "";
+                                state = "DATA";
+                                if (dataLen === 0) state = "TERM";
+                            }
+                        }
+                        else if (state === "DATA") {
+                            let chunkBits = 8;
+                            if (modeType === "ALPH") chunkBits = 11;
+                            if (modeType === "KANJI") chunkBits = 13;
+
+                            if (buffer.length === chunkBits) {
+                                const val = parseInt(buffer, 2);
+                                const hexVal = "0x" + val.toString(16).toUpperCase();
+                                let charDisp = ".";
+                                
+                                if (modeType === "BYTE") {
+                                    decodedBytes.push(val);
+                                    if (val >= 32 && val <= 126) charDisp = String.fromCharCode(val);
+                                }
+                                addBlock(`DATA ${currentCount+1}`, buffer, hexVal, charDisp, "type-data");
+                                currentCount++;
+                                buffer = "";
+
+                                if (currentCount >= dataLen) {
+                                    state = "TERM";
+                                    if (modeType === "BYTE") {
+                                        try {
+                                            const finalDec = new TextDecoder("utf-8").decode(new Uint8Array(decodedBytes));
+                                            addLog(`★デコード結果: <span class="log-val">${finalDec}</span>`);
+                                        } catch(e) {}
+                                    }
+                                }
+                            }
+                        }
+                        else if (state === "TERM") {
+                            if (buffer.length === 4) {
+                                addBlock("TERM", buffer, "-", "END", "type-term");
+                                buffer = "";
+                                state = "ECC";
+                            }
+                        }
+                        else if (state === "ECC") {
+                            // --- ここが修正ポイント: END後も中身をちゃんと表示 ---
+                            if (buffer.length === 8) {
+                                const val = parseInt(buffer, 2);
+                                const hex = "0x" + val.toString(16).toUpperCase().padStart(2,'0');
+                                
+                                // Padding判定 (0xEC or 0x11)
+                                let label = "ECC";
+                                let color = "type-ecc";
+                                let desc = "-";
+                                
+                                if (val === 0xEC || val === 0x11) {
+                                    label = "PAD";
+                                    color = "type-pad";
+                                    desc = (val === 0xEC) ? "11101100" : "00010001";
+                                }
+
+                                addBlock(label, buffer, hex, desc, color);
+                                buffer = "";
+                            }
+                        }
+
+                        const speed = document.getElementById('speedSlider').value;
+                        const waitTime = Math.max(2, (100 - speed) * 3);
+                        await sleep(waitTime);
+                        bitSpan.className = "bit bit-processed";
+                    }
+                }
+                if (goingUp) {
+                    y--;
+                    if (y < 0) { y = 0; x -= 2; goingUp = false; }
+                } else {
+                    y++;
+                    if (y >= gridSize) { y = gridSize - 1; x -= 2; goingUp = true; }
+                }
+            }
+            // 余りビット
+            if (buffer.length > 0) addBlock("ECC/PAD", buffer, "-", "-", "type-ecc");
+            
+            duck.style.display = 'none';
+            btnToggle.disabled = false;
+            addLog("全データ走査完了。");
+        }
+
+        function moveDuck(x, y) {
+            const duck = document.getElementById('duck-scanner');
+            duck.style.left = (x * cellSize + cellSize / 2) + 'px';
+            duck.style.top = (y * cellSize + cellSize / 2) + 'px';
+        }
+
+        function isFunctionPattern(x, y) {
+            if (x < 9 && y < 9) return true;
+            if (x > gridSize - 9 && y < 9) return true;
+            if (x < 9 && y > gridSize - 9) return true;
+            if (x == 6 || y == 6) return true;
+            if (gridSize > 21 && x > gridSize - 10 && x < gridSize - 4 && y > gridSize - 10 && y < gridSize - 4) return true;
+            if (isFormatInfoPixel(x, y, 1) || isFormatInfoPixel(x, y, 2)) return true;
+            return false;
+        }
+
+        function addLog(htmlText) {
+            const div = document.createElement('div');
+            div.className = "log-line";
+            div.innerHTML = "> " + htmlText;
+            logDisplay.appendChild(div);
+            logDisplay.scrollTop = logDisplay.scrollHeight;
+        }
+        
+        function addBlock(label, bin, hex, char, colorClass) {
+            const div = document.createElement('div');
+            div.className = `bit-block ${colorClass}`;
+            div.innerHTML = `
+                <span class="blk-label">${label}</span>
+                <span class="blk-bin">${bin}</span>
+                <span class="blk-hex">${hex}</span>
+                <span class="blk-char">${char}</span>
+            `;
+            structDisplay.appendChild(div);
+            structDisplay.scrollTop = structDisplay.scrollHeight;
+        }
+
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+        
+        initCanvas();
+    </script>
+</body>
+</html>
