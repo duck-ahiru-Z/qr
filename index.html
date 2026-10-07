@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QRコード0から解析くん Real Decoder (Full Dump)</title>
+    <title>QRコード0から解析くん Real Decoder</title>
     <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
     <style>
+        * { box-sizing: border-box; }
         body {
             font-family: 'Zen Maru Gothic', sans-serif;
             background-color: #1e272e;
@@ -16,9 +17,10 @@
             align-items: center;
             padding: 20px;
             min-height: 100vh;
+            margin: 0;
         }
 
-        h1 { color: #ffdd59; text-shadow: 2px 2px 0 #000; margin-bottom: 10px; }
+        h1 { color: #ffdd59; text-shadow: 2px 2px 0 #000; margin: 4px 0 10px; }
 
         .main-wrapper {
             display: flex; flex-wrap: wrap; gap: 20px; justify-content: center; width: 100%; max-width: 1400px;
@@ -31,10 +33,18 @@
             cursor: crosshair;
         }
         canvas { image-rendering: pixelated; border: 1px solid #808e9b; display: block; }
-        
+        #overlayCanvas {
+            position: absolute;
+            left: 10px;
+            top: 10px;
+            pointer-events: none;
+            background: transparent;
+            border: none;
+        }
+
         #duck-scanner {
             position: absolute; width: 18px; height: 18px; pointer-events: none;
-            transform: translate(-50%, -50%); transition: left 0.08s linear, top 0.08s linear; display: none; z-index: 20;
+            transform: translate(-50%, -50%); transition: left 0.045s linear, top 0.045s linear; display: none; z-index: 20;
         }
         .duck-body { position: absolute; width: 100%; height: 100%; background: #ffd32a; border-radius: 50%; border: 2px solid #e67e22; box-shadow: 0 0 5px yellow;}
         .duck-beak { position: absolute; top: 50%; right: -4px; width: 8px; height: 6px; background: #e67e22; border-radius: 2px; transform: translateY(-50%); }
@@ -56,27 +66,69 @@
         .btn-scan { background: #ffdd59; color: #1e272e; }
         .btn-toggle { background: #ff5e57; color: white; display: none;}
 
+        .speed-row {
+            margin-bottom: 12px; color:#ccc; font-size:0.9rem;
+            display:flex; align-items:center; gap:8px; flex-wrap:wrap; justify-content:center;
+        }
+
         .info-box {
             background: #2d3436; padding: 10px; border-radius: 4px; font-family: 'JetBrains Mono', monospace;
-            border: 1px solid #4b4b4b; position: relative; margin-bottom: 10px; display: flex; flex-direction: column;
+            border: 1px solid #4b4b4b; position: relative; margin-bottom: 0; display: flex; flex-direction: column;
         }
-        .box-title { color: #00d2d3; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 2px; font-size: 0.8rem; font-weight: bold;}
+        .box-title { color: #00d2d3; border-bottom: 1px solid #555; margin-bottom: 7px; padding-bottom: 3px; font-size: 0.8rem; font-weight: bold;}
+
+        .stage-card {
+            width: 100%; max-width: 610px;
+            background: #2d3436; border: 1px solid #4b4b4b; border-left: 4px solid #00d2d3;
+            border-radius: 4px; padding: 9px 11px; display: flex; gap: 10px; align-items: flex-start;
+            font-size: 0.84rem;
+        }
+        .stage-badge {
+            flex: 0 0 auto; padding: 3px 6px; background:#00d2d3; color:#1e272e;
+            border-radius:3px; font-family:'JetBrains Mono', monospace; font-size:0.7rem; font-weight:bold;
+        }
+        .stage-title { color:#fff; font-weight:bold; margin-bottom:2px; }
+        .stage-detail { color:#b9c4cb; line-height:1.45; }
+        .legend {
+            width: 100%; max-width: 610px; display:flex; gap:12px; flex-wrap:wrap; justify-content:center;
+            color:#aab4ba; font-size:0.72rem;
+        }
+        .legend-item { display:flex; align-items:center; gap:5px; }
+        .legend-dot { width:10px; height:10px; border-radius:2px; display:inline-block; }
+        .legend-format1 { background:#9c88ff; }
+        .legend-format2 { background:#fab1a0; }
+        .legend-mask { background:#be2edd; }
+        .legend-data { background:#05c46b; }
+        .legend-ecc { background:#808e9b; }
+
+        .meta-grid {
+            display:grid; grid-template-columns:repeat(4,minmax(90px,1fr)); gap:6px;
+        }
+        .meta-item {
+            background:#1e272e; border:1px solid #434d52; border-radius:4px; padding:6px 7px; min-height:46px;
+        }
+        .meta-label { font-size:0.62rem; color:#8e9aa1; margin-bottom:3px; }
+        .meta-value { font-size:0.83rem; color:#fff; font-weight:bold; word-break:break-word; }
+        .meta-value.accent { color:#ffdd59; }
 
         /* バイナリストリーム */
         .binary-stream {
-            height: 60px; overflow-y: auto; font-size: 0.9rem; letter-spacing: 1px; word-break: break-all; color: #808e9b; line-height: 1.4;
+            height: 72px; overflow-y: auto; font-size: 0.86rem; letter-spacing: 1px; word-break: break-all; color: #808e9b; line-height: 1.45;
             background: #000; padding: 5px; border-radius: 4px;
         }
         .bit { display: inline-block; padding: 0 1px;}
         .bit-new { color: #fff; font-weight: bold; text-shadow: 0 0 4px #00d2d3; }
+        .bit-data { color:#05c46b; }
+        .bit-ecc { color:#aab4ba; }
+        .bit-rem { color:#ffa801; }
 
         /* 構造解析エリア */
         .structure-area {
-            height: 300px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start;
+            height: 330px; overflow-y: auto; display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-start;
             background: #1e272e; padding: 5px;
         }
-        .bit-block { 
-            padding: 4px 6px; border-radius: 4px; font-size: 0.8rem; text-align: left; display: flex; flex-direction: column; 
+        .bit-block {
+            padding: 4px 6px; border-radius: 4px; font-size: 0.8rem; text-align: left; display: flex; flex-direction: column;
             min-width: 85px; animation: popIn 0.1s forwards;
             background: #333; border-left: 3px solid #777;
             color: #ecf0f1;
@@ -84,9 +136,9 @@
         @keyframes popIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
         .blk-label { font-size: 0.65rem; opacity: 0.7; margin-bottom: 2px; text-transform: uppercase; color: #dfe6e9;}
-        .blk-bin   { font-size: 0.7rem; color: #74b9ff; letter-spacing: 0.5px; margin-bottom: 1px;}
+        .blk-bin   { font-size: 0.7rem; color: #74b9ff; letter-spacing: 0.5px; margin-bottom: 1px; word-break:break-all; }
         .blk-hex   { font-size: 0.75rem; color: #ffdd59; font-weight: bold; margin-bottom: 1px;}
-        .blk-char  { font-size: 1.1rem; font-weight: bold; color: #fff; text-align: center; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 2px; padding-top: 2px;}
+        .blk-char  { font-size: 1rem; font-weight: bold; color: #fff; text-align: center; border-top: 1px solid rgba(255,255,255,0.2); margin-top: 2px; padding-top: 2px; word-break:break-all; }
 
         .type-mode { border-color: #ff5e57; background: rgba(255, 94, 87, 0.1); }
         .type-len  { border-color: #0fbcf9; background: rgba(15, 188, 249, 0.1); }
@@ -94,9 +146,13 @@
         .type-term { border-color: #ffa801; background: rgba(255, 168, 1, 0.1); }
         .type-pad  { border-color: #57606f; background: rgba(87, 96, 111, 0.3); color: #aaa; }
         .type-ecc  { border-color: #808e9b; background: rgba(128, 142, 155, 0.1); opacity: 0.9; }
+        .type-format { border-color:#9c88ff; background:rgba(156,136,255,0.12); }
+        .type-version { border-color:#fab1a0; background:rgba(250,177,160,0.10); }
+        .type-info { border-color:#00d2d3; background:rgba(0,210,211,0.08); }
+        .type-warn { border-color:#ffa801; background:rgba(255,168,1,0.08); }
 
-        .log-area { 
-            height: 150px; overflow-y: auto; font-size: 0.85rem; line-height: 1.5; color: #ccc; 
+        .log-area {
+            height: 170px; overflow-y: auto; font-size: 0.85rem; line-height: 1.5; color: #ccc;
             font-family: 'Zen Maru Gothic', sans-serif;
             background: #1e272e; border-top: 1px solid #555;
         }
@@ -105,6 +161,14 @@
         .log-val { font-weight: bold; color: #ffdd59; }
         .log-err { color: #ff5e57; font-weight: bold; }
         .log-ok  { color: #05c46b; font-weight: bold; }
+        .log-warn { color:#ffa801; font-weight:bold; }
+
+        @media (max-width: 760px) {
+            body { padding: 10px; }
+            .right-col { min-width: 0; width:100%; }
+            .meta-grid { grid-template-columns:repeat(2,minmax(90px,1fr)); }
+            h1 { font-size:1.35rem; }
+        }
     </style>
 </head>
 <body>
@@ -116,7 +180,7 @@
             1. 画像読込
             <input type="file" id="fileInput" accept="image/*" style="display:none">
         </label>
-        
+
         <button id="btnFormat" class="btn-purple" onclick="stepFormatInfo()" disabled>2. Mask特定</button>
 
         <div style="display:flex; flex-direction:column; align-items:center; margin:0 5px;">
@@ -125,33 +189,65 @@
                 <option value="1">Mask 1 y%2=0</option>
                 <option value="2">Mask 2 x%3=0</option>
                 <option value="3">Mask 3 (x+y)%3=0</option>
-                <option value="4">Mask 4 (y/2+x/3)%2=0</option>
+                <option value="4">Mask 4 (⌊y/2⌋+⌊x/3⌋)%2=0</option>
                 <option value="5">Mask 5 ((xy)%2+(xy)%3)=0</option>
                 <option value="6">Mask 6 (((xy)%2+(xy)%3)%2)=0</option>
                 <option value="7">Mask 7 (((x+y)%2+(xy)%3)%2)=0</option>
             </select>
         </div>
 
-        <button id="btnMask" class="btn-mask" onclick="stepMask()" disabled>3. マスク適用</button>
+        <button id="btnMask" class="btn-mask" onclick="stepMask()" disabled>3. マスク解除</button>
         <button id="btnToggle" class="btn-toggle" onclick="toggleView()">👁️ 比較</button>
         <button id="btnScan" class="btn-scan" onclick="stepScan()" disabled>4. 解析実行</button>
     </div>
-    
-    <div style="margin-bottom: 15px; color:#ccc; font-size:0.9rem;">
-        あひる走査速度: <input type="range" id="speedSlider" min="1" max="100" value="80">
+
+    <div class="speed-row">
+        あひる走査速度: <input type="range" id="speedSlider" min="1" max="100" value="86">
+        <span id="speedText">86</span>
     </div>
 
     <div class="main-wrapper">
         <div class="left-col">
             <div class="canvas-container">
                 <canvas id="qrCanvas"></canvas>
+                <canvas id="overlayCanvas"></canvas>
                 <div id="duck-scanner">
                     <div class="duck-beak"></div><div class="duck-body"></div><div class="duck-eye"></div>
                 </div>
             </div>
+
+            <div class="stage-card">
+                <span id="stageBadge" class="stage-badge">READY</span>
+                <div>
+                    <div id="stageTitle" class="stage-title">QR画像を読み込んでください</div>
+                    <div id="stageDetail" class="stage-detail">各ステップで、QRコードのどの領域を見ているかを色付きで表示します。</div>
+                </div>
+            </div>
+
+            <div class="legend">
+                <span class="legend-item"><span class="legend-dot legend-format1"></span>Format Primary</span>
+                <span class="legend-item"><span class="legend-dot legend-format2"></span>Format Backup</span>
+                <span class="legend-item"><span class="legend-dot legend-mask"></span>Mask反転対象</span>
+                <span class="legend-item"><span class="legend-dot legend-data"></span>Data codeword</span>
+                <span class="legend-item"><span class="legend-dot legend-ecc"></span>ECC</span>
+            </div>
         </div>
 
         <div class="right-col">
+            <div class="info-box">
+                <div class="box-title">QR基本情報</div>
+                <div class="meta-grid">
+                    <div class="meta-item"><div class="meta-label">VERSION</div><div id="metaVersion" class="meta-value">-</div></div>
+                    <div class="meta-item"><div class="meta-label">SIZE</div><div id="metaSize" class="meta-value">-</div></div>
+                    <div class="meta-item"><div class="meta-label">EC LEVEL</div><div id="metaEC" class="meta-value accent">-</div></div>
+                    <div class="meta-item"><div class="meta-label">MASK</div><div id="metaMask" class="meta-value accent">-</div></div>
+                    <div class="meta-item"><div class="meta-label">DATA CW</div><div id="metaDataCW" class="meta-value">-</div></div>
+                    <div class="meta-item"><div class="meta-label">ECC CW</div><div id="metaECCCW" class="meta-value">-</div></div>
+                    <div class="meta-item"><div class="meta-label">RS BLOCKS</div><div id="metaBlocks" class="meta-value">-</div></div>
+                    <div class="meta-item"><div class="meta-label">REMAINDER</div><div id="metaRemainder" class="meta-value">-</div></div>
+                </div>
+            </div>
+
             <div class="info-box" style="flex: 2;">
                 <div class="box-title">構造データ (Decoded Structure)</div>
                 <div id="structureDisplay" class="structure-area"></div>
@@ -163,9 +259,9 @@
                     <div class="log-line">画像を読み込んでください。</div>
                 </div>
             </div>
-            
+
             <div class="info-box" style="flex: 0 0 auto;">
-                 <div class="box-title">Raw Bit Stream</div>
+                 <div class="box-title">Raw Bit Stream（物理配置順）</div>
                  <div id="binaryDisplay" class="binary-stream">...</div>
             </div>
         </div>
@@ -174,78 +270,313 @@
     <script>
         const canvas = document.getElementById('qrCanvas');
         const ctx = canvas.getContext('2d');
+        const overlayCanvas = document.getElementById('overlayCanvas');
+        const octx = overlayCanvas.getContext('2d');
         const logDisplay = document.getElementById('logDisplay');
         const binDisplay = document.getElementById('binaryDisplay');
         const structDisplay = document.getElementById('structureDisplay');
         const btnToggle = document.getElementById('btnToggle');
         const maskSelect = document.getElementById('maskSelect');
+        const speedSlider = document.getElementById('speedSlider');
 
-        const cellSize = 15;
+        let cellSize = 15;
         let gridSize = 21;
-        
-        let qrMatrix = [];      
-        let correctMatrix = []; 
-        let isViewMasked = true; 
+        let qrVersion = 1;
+        let qrMatrix = [];
+        let correctMatrix = [];
+        let functionMask = [];
+        let isViewMasked = true;
         let currentMaskID = 0;
-        
+        let ecLevel = null;
+        let formatResult = null;
+        let blockSpec = null;
+        let jsqrDecodedText = "";
+        let lastCode = null;
+
+        const RS_BLOCK_TABLE = [[1,26,19],[1,26,16],[1,26,13],[1,26,9],[1,44,34],[1,44,28],[1,44,22],[1,44,16],[1,70,55],[1,70,44],[2,35,17],[2,35,13],[1,100,80],[2,50,32],[2,50,24],[4,25,9],[1,134,108],[2,67,43],[2,33,15,2,34,16],[2,33,11,2,34,12],[2,86,68],[4,43,27],[4,43,19],[4,43,15],[2,98,78],[4,49,31],[2,32,14,4,33,15],[4,39,13,1,40,14],[2,121,97],[2,60,38,2,61,39],[4,40,18,2,41,19],[4,40,14,2,41,15],[2,146,116],[3,58,36,2,59,37],[4,36,16,4,37,17],[4,36,12,4,37,13],[2,86,68,2,87,69],[4,69,43,1,70,44],[6,43,19,2,44,20],[6,43,15,2,44,16],[4,101,81],[1,80,50,4,81,51],[4,50,22,4,51,23],[3,36,12,8,37,13],[2,116,92,2,117,93],[6,58,36,2,59,37],[4,46,20,6,47,21],[7,42,14,4,43,15],[4,133,107],[8,59,37,1,60,38],[8,44,20,4,45,21],[12,33,11,4,34,12],[3,145,115,1,146,116],[4,64,40,5,65,41],[11,36,16,5,37,17],[11,36,12,5,37,13],[5,109,87,1,110,88],[5,65,41,5,66,42],[5,54,24,7,55,25],[11,36,12,7,37,13],[5,122,98,1,123,99],[7,73,45,3,74,46],[15,43,19,2,44,20],[3,45,15,13,46,16],[1,135,107,5,136,108],[10,74,46,1,75,47],[1,50,22,15,51,23],[2,42,14,17,43,15],[5,150,120,1,151,121],[9,69,43,4,70,44],[17,50,22,1,51,23],[2,42,14,19,43,15],[3,141,113,4,142,114],[3,70,44,11,71,45],[17,47,21,4,48,22],[9,39,13,16,40,14],[3,135,107,5,136,108],[3,67,41,13,68,42],[15,54,24,5,55,25],[15,43,15,10,44,16],[4,144,116,4,145,117],[17,68,42],[17,50,22,6,51,23],[19,46,16,6,47,17],[2,139,111,7,140,112],[17,74,46],[7,54,24,16,55,25],[34,37,13],[4,151,121,5,152,122],[4,75,47,14,76,48],[11,54,24,14,55,25],[16,45,15,14,46,16],[6,147,117,4,148,118],[6,73,45,14,74,46],[11,54,24,16,55,25],[30,46,16,2,47,17],[8,132,106,4,133,107],[8,75,47,13,76,48],[7,54,24,22,55,25],[22,45,15,13,46,16],[10,142,114,2,143,115],[19,74,46,4,75,47],[28,50,22,6,51,23],[33,46,16,4,47,17],[8,152,122,4,153,123],[22,73,45,3,74,46],[8,53,23,26,54,24],[12,45,15,28,46,16],[3,147,117,10,148,118],[3,73,45,23,74,46],[4,54,24,31,55,25],[11,45,15,31,46,16],[7,146,116,7,147,117],[21,73,45,7,74,46],[1,53,23,37,54,24],[19,45,15,26,46,16],[5,145,115,10,146,116],[19,75,47,10,76,48],[15,54,24,25,55,25],[23,45,15,25,46,16],[13,145,115,3,146,116],[2,74,46,29,75,47],[42,54,24,1,55,25],[23,45,15,28,46,16],[17,145,115],[10,74,46,23,75,47],[10,54,24,35,55,25],[19,45,15,35,46,16],[17,145,115,1,146,116],[14,74,46,21,75,47],[29,54,24,19,55,25],[11,45,15,46,46,16],[13,145,115,6,146,116],[14,74,46,23,75,47],[44,54,24,7,55,25],[59,46,16,1,47,17],[12,151,121,7,152,122],[12,75,47,26,76,48],[39,54,24,14,55,25],[22,45,15,41,46,16],[6,151,121,14,152,122],[6,75,47,34,76,48],[46,54,24,10,55,25],[2,45,15,64,46,16],[17,152,122,4,153,123],[29,74,46,14,75,47],[49,54,24,10,55,25],[24,45,15,46,46,16],[4,152,122,18,153,123],[13,74,46,32,75,47],[48,54,24,14,55,25],[42,45,15,32,46,16],[20,147,117,4,148,118],[40,75,47,7,76,48],[43,54,24,22,55,25],[10,45,15,67,46,16],[19,148,118,6,149,119],[18,75,47,31,76,48],[34,54,24,34,55,25],[20,45,15,61,46,16]];
+        const ALIGNMENT_PATTERN_CENTERS = [[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50],[6,30,54],[6,32,58],[6,34,62],[6,26,46,66],[6,26,48,70],[6,26,50,74],[6,30,54,78],[6,30,56,82],[6,30,58,86],[6,34,62,90],[6,28,50,72,94],[6,26,50,74,98],[6,30,54,78,102],[6,28,54,80,106],[6,32,58,84,110],[6,30,58,86,114],[6,34,62,90,118],[6,26,50,74,98,122],[6,30,54,78,102,126],[6,26,52,78,104,130],[6,30,56,82,108,134],[6,34,60,86,112,138],[6,30,58,86,114,142],[6,34,62,90,118,146],[6,30,54,78,102,126,150],[6,24,50,76,102,128,154],[6,28,54,80,106,132,158],[6,32,58,84,110,136,162],[6,26,54,82,110,138,166],[6,30,58,86,114,142,170]];
+        const RS_LEVEL_INDEX = { L:0, M:1, Q:2, H:3 };
+        const EC_BITS_TO_LEVEL = { 1:"L", 0:"M", 3:"Q", 2:"H" };
+        const ALPHANUM = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:";
+
         const maskPatterns = [
-            (x, y) => (x + y) % 2 == 0,
-            (x, y) => y % 2 == 0,
-            (x, y) => x % 3 == 0,
-            (x, y) => (x + y) % 3 == 0,
-            (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2 == 0,
-            (x, y) => ((x * y) % 2) + ((x * y) % 3) == 0,
-            (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 == 0,
-            (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 == 0
+            (x, y) => (x + y) % 2 === 0,
+            (x, y) => y % 2 === 0,
+            (x, y) => x % 3 === 0,
+            (x, y) => (x + y) % 3 === 0,
+            (x, y) => (Math.floor(y / 2) + Math.floor(x / 3)) % 2 === 0,
+            (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0,
+            (x, y) => ((((x * y) % 2) + ((x * y) % 3)) % 2) === 0,
+            (x, y) => ((((x + y) % 2) + ((x * y) % 3)) % 2) === 0
         ];
 
-        const formatInfoCoords1 = [
-            {x:8, y:0}, {x:8, y:1}, {x:8, y:2}, {x:8, y:3}, {x:8, y:4}, {x:8, y:5}, {x:8, y:7}, 
-            {x:8, y:8}, {x:7, y:8}, {x:5, y:8}, {x:4, y:8}, {x:3, y:8}, {x:2, y:8}, {x:1, y:8}, {x:0, y:8}
-        ];
-        
-        function getFormatInfoCoords2(size) {
-            return [
-                {x:8, y:size-1}, {x:8, y:size-2}, {x:8, y:size-3}, {x:8, y:size-4}, {x:8, y:size-5}, {x:8, y:size-6}, {x:8, y:size-7},
-                {x:size-8, y:8}, {x:size-7, y:8}, {x:size-6, y:8}, {x:size-5, y:8}, {x:size-4, y:8}, {x:size-3, y:8}, {x:size-2, y:8}, {x:size-1, y:8}
-            ];
+        function setStage(badge, title, detail) {
+            document.getElementById('stageBadge').textContent = badge;
+            document.getElementById('stageTitle').textContent = title;
+            document.getElementById('stageDetail').textContent = detail;
         }
 
-        const FORMAT_INFO_MASK = 0b101010000010010;
+        function setMeta(id, value) {
+            document.getElementById(id).textContent = value ?? "-";
+        }
+
+        function updateMeta() {
+            setMeta("metaVersion", qrVersion || "-");
+            setMeta("metaSize", gridSize ? `${gridSize} × ${gridSize}` : "-");
+            setMeta("metaEC", ecLevel || "-");
+            setMeta("metaMask", Number.isInteger(currentMaskID) && formatResult ? `Mask ${currentMaskID}` : "-");
+            if (blockSpec) {
+                setMeta("metaDataCW", blockSpec.totalDataCodewords);
+                setMeta("metaECCCW", blockSpec.totalEcCodewords);
+                setMeta("metaBlocks", blockSpec.blocks.length);
+                setMeta("metaRemainder", blockSpec.remainderBits);
+            } else {
+                setMeta("metaDataCW", "-");
+                setMeta("metaECCCW", "-");
+                setMeta("metaBlocks", "-");
+                setMeta("metaRemainder", "-");
+            }
+        }
+
+        speedSlider.addEventListener("input", () => {
+            document.getElementById("speedText").textContent = speedSlider.value;
+        });
 
         function initCanvas(size = 21) {
             gridSize = size;
+            cellSize = Math.max(3, Math.min(15, Math.floor(600 / gridSize)));
             canvas.width = gridSize * cellSize;
             canvas.height = gridSize * cellSize;
+            overlayCanvas.width = canvas.width;
+            overlayCanvas.height = canvas.height;
         }
 
-        function drawGrid(matrix, overlayType) {
+        function clearOverlay() {
+            octx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+
+        function fillCell(x, y, color, alpha = 0.5) {
+            octx.save();
+            octx.globalAlpha = alpha;
+            octx.fillStyle = color;
+            octx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+            octx.restore();
+        }
+
+        function outlineCell(x, y, color = "#00d2d3", width = 2) {
+            octx.save();
+            octx.strokeStyle = color;
+            octx.lineWidth = width;
+            const pad = Math.max(1, width / 2);
+            octx.strokeRect(x * cellSize + pad, y * cellSize + pad, cellSize - 2 * pad, cellSize - 2 * pad);
+            octx.restore();
+        }
+
+        function fillCells(coords, color, alpha = 0.5) {
+            for (const c of coords) fillCell(c.x, c.y, color, alpha);
+        }
+
+        function drawGrid(matrix) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (let y = 0; y < gridSize; y++) {
                 for (let x = 0; x < gridSize; x++) {
                     const val = matrix[y][x];
-                    
-                    if (overlayType === 'format1' && isFormatInfoPixel(x,y,1)) {
-                         ctx.fillStyle = '#9c88ff';
-                    } else if (overlayType === 'format2' && isFormatInfoPixel(x,y,2)) {
-                         ctx.fillStyle = '#fab1a0'; 
-                    } else if (overlayType === 'mask' && val === 1) {
-                        ctx.fillStyle = 'rgba(190, 46, 221, 0.6)';
-                    } else {
-                        ctx.fillStyle = val ? '#000' : '#fff';
-                    }
-                    
+                    ctx.fillStyle = val ? '#000' : '#fff';
                     ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
-                    ctx.strokeStyle = '#555';
-                    ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    if (cellSize >= 7) {
+                        ctx.strokeStyle = '#555';
+                        ctx.lineWidth = 0.5;
+                        ctx.strokeRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                    }
                 }
             }
         }
-        
-        function isFormatInfoPixel(x, y, type) {
-            if (type === 1) return formatInfoCoords1.some(c => c.x === x && c.y === y);
-            if (type === 2) return getFormatInfoCoords2(gridSize).some(c => c.x === x && c.y === y);
-            return false;
+
+        function getFormatInfoCoords1() {
+            const coords = [];
+            for (let i = 0; i <= 5; i++) coords.push({x:8, y:i});
+            coords.push({x:8, y:7});
+            coords.push({x:8, y:8});
+            coords.push({x:7, y:8});
+            for (let i = 9; i <= 14; i++) coords.push({x:14-i, y:8});
+            return coords; // index i = format bit i (LSB first)
+        }
+
+        function getFormatInfoCoords2(size) {
+            const coords = [];
+            for (let i = 0; i <= 7; i++) coords.push({x:size-1-i, y:8});
+            for (let i = 8; i <= 14; i++) coords.push({x:8, y:size-15+i});
+            return coords; // index i = format bit i (LSB first)
+        }
+
+        function getVersionInfoCoordsA(size) {
+            const coords = [];
+            for (let i = 0; i < 18; i++) coords.push({x:size - 11 + (i % 3), y:Math.floor(i / 3)});
+            return coords; // index i = version bit i (LSB first)
+        }
+
+        function getVersionInfoCoordsB(size) {
+            const coords = [];
+            for (let i = 0; i < 18; i++) coords.push({x:Math.floor(i / 3), y:size - 11 + (i % 3)});
+            return coords;
+        }
+
+        function hammingDistance(a, b) {
+            let v = (a ^ b) >>> 0;
+            let n = 0;
+            while (v) { n += v & 1; v >>>= 1; }
+            return n;
+        }
+
+        function makeFormatBits(ecBits, mask) {
+            const data = ((ecBits & 0x3) << 3) | (mask & 0x7);
+            let rem = data;
+            for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >>> 9) * 0x537);
+            return (((data << 10) | rem) ^ 0x5412) & 0x7FFF;
+        }
+
+        function decodeFormatBits(raw) {
+            let best = null;
+            for (const [ecBitsText, level] of Object.entries(EC_BITS_TO_LEVEL)) {
+                const ecBits = Number(ecBitsText);
+                for (let mask = 0; mask < 8; mask++) {
+                    const valid = makeFormatBits(ecBits, mask);
+                    const distance = hammingDistance(raw, valid);
+                    if (!best || distance < best.distance) best = { ecBits, level, mask, valid, distance };
+                }
+            }
+            return best;
+        }
+
+        function makeVersionBits(version) {
+            let rem = version;
+            for (let i = 0; i < 12; i++) rem = (rem << 1) ^ ((rem >>> 11) * 0x1F25);
+            return ((version << 12) | rem) & 0x3FFFF;
+        }
+
+        function decodeVersionBits(raw) {
+            let best = null;
+            for (let v = 7; v <= 40; v++) {
+                const valid = makeVersionBits(v);
+                const distance = hammingDistance(raw, valid);
+                if (!best || distance < best.distance) best = { version:v, valid, distance };
+            }
+            return best;
+        }
+
+        function readBitsLSB(coords, matrix) {
+            let raw = 0;
+            for (let i = 0; i < coords.length; i++) {
+                const c = coords[i];
+                raw |= (matrix[c.y][c.x] & 1) << i;
+            }
+            return raw >>> 0;
+        }
+
+        function getBlockSpec(version, level) {
+            const idx = (version - 1) * 4 + RS_LEVEL_INDEX[level];
+            const row = RS_BLOCK_TABLE[idx];
+            if (!row) throw new Error(`RS block table not found: V${version}-${level}`);
+            const blocks = [];
+            for (let i = 0; i < row.length; i += 3) {
+                const count = row[i], totalCount = row[i+1], dataCount = row[i+2];
+                for (let n = 0; n < count; n++) {
+                    blocks.push({
+                        totalCount,
+                        dataCount,
+                        ecCount: totalCount - dataCount,
+                        data: [],
+                        ecc: []
+                    });
+                }
+            }
+            const totalCodewords = blocks.reduce((s,b) => s + b.totalCount, 0);
+            const totalDataCodewords = blocks.reduce((s,b) => s + b.dataCount, 0);
+            const remainderBits = getRemainderBits(version);
+            return {
+                version, level, blocks,
+                totalCodewords,
+                totalDataCodewords,
+                totalEcCodewords: totalCodewords - totalDataCodewords,
+                remainderBits
+            };
+        }
+
+        function getRemainderBits(version) {
+            if (version === 1) return 0;
+            if (version >= 2 && version <= 6) return 7;
+            if (version >= 7 && version <= 13) return 0;
+            if (version >= 14 && version <= 20) return 3;
+            if (version >= 21 && version <= 27) return 4;
+            if (version >= 28 && version <= 34) return 3;
+            return 0;
+        }
+
+        function buildFunctionMask(version, size) {
+            const m = Array.from({length:size}, () => Array(size).fill(false));
+            const markRect = (x0,y0,w,h) => {
+                for (let y = Math.max(0,y0); y < Math.min(size,y0+h); y++)
+                    for (let x = Math.max(0,x0); x < Math.min(size,x0+w); x++) m[y][x] = true;
+            };
+
+            // Finder patterns + separators + local format area
+            markRect(0, 0, 9, 9);
+            markRect(size - 8, 0, 8, 9);
+            markRect(0, size - 8, 9, 8);
+
+            // Timing patterns
+            for (let i = 0; i < size; i++) {
+                m[6][i] = true;
+                m[i][6] = true;
+            }
+
+            // Alignment patterns
+            const centers = ALIGNMENT_PATTERN_CENTERS[version - 1] || [];
+            for (const cy of centers) {
+                for (const cx of centers) {
+                    const overlapsFinder =
+                        (cx <= 8 && cy <= 8) ||
+                        (cx >= size - 9 && cy <= 8) ||
+                        (cx <= 8 && cy >= size - 9);
+                    if (!overlapsFinder) markRect(cx - 2, cy - 2, 5, 5);
+                }
+            }
+
+            // Format information (both copies)
+            for (const c of getFormatInfoCoords1()) m[c.y][c.x] = true;
+            for (const c of getFormatInfoCoords2(size)) m[c.y][c.x] = true;
+
+            // Dark module
+            const darkY = 4 * version + 9;
+            if (darkY >= 0 && darkY < size) m[darkY][8] = true;
+
+            // Version information, V7+
+            if (version >= 7) {
+                for (const c of getVersionInfoCoordsA(size)) m[c.y][c.x] = true;
+                for (const c of getVersionInfoCoordsB(size)) m[c.y][c.x] = true;
+            }
+            return m;
+        }
+
+        function isFunctionPattern(x, y) {
+            return !!functionMask?.[y]?.[x];
+        }
+
+        function getDataCoordinates() {
+            const coords = [];
+            let upward = true;
+            for (let right = gridSize - 1; right >= 1; right -= 2) {
+                if (right === 6) right--;
+                for (let vert = 0; vert < gridSize; vert++) {
+                    const y = upward ? gridSize - 1 - vert : vert;
+                    for (let j = 0; j < 2; j++) {
+                        const x = right - j;
+                        if (!isFunctionPattern(x, y)) coords.push({x,y});
+                    }
+                }
+                upward = !upward;
+            }
+            return coords;
         }
 
         document.getElementById('fileInput').addEventListener('change', (e) => {
@@ -262,65 +593,120 @@
 
         function processImage(img) {
             const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-            const scale = Math.min(1000 / img.width, 1000 / img.height, 1);
-            tempCanvas.width = img.width * scale;
-            tempCanvas.height = img.height * scale;
+            const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+            const scale = Math.min(1600 / img.width, 1600 / img.height, 1);
+            tempCanvas.width = Math.max(1, Math.round(img.width * scale));
+            tempCanvas.height = Math.max(1, Math.round(img.height * scale));
             tempCtx.drawImage(img, 0, 0, tempCanvas.width, tempCanvas.height);
-            
-            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-            const code = jsQR(imageData.data, imageData.width, imageData.height);
-            
-            if (code) {
-                gridSize = code.location.dimension || 21;
-                const initialHint = (code.maskPattern !== undefined) ? code.maskPattern : 0;
-                maskSelect.value = initialHint;
-                
-                initCanvas(gridSize);
-                qrMatrix = extractQRMatrix(imageData, code.location, gridSize);
-                correctMatrix = JSON.parse(JSON.stringify(qrMatrix)); 
 
-                drawGrid(qrMatrix);
-                
-                logDisplay.innerHTML = "";
-                addLog(`読取成功: Grid ${gridSize}x${gridSize}`);
-                
-                document.getElementById('btnFormat').disabled = false;
-                document.getElementById('btnMask').disabled = true;
-                document.getElementById('btnScan').disabled = true;
-                btnToggle.style.display = 'none';
-                isViewMasked = true;
-                binDisplay.innerHTML = "";
-                structDisplay.innerHTML = "";
-            } else {
+            const imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
+            const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "attemptBoth" });
+
+            if (!code) {
                 alert("QRコード認識失敗");
+                setStage("ERROR", "QRコードを認識できませんでした", "余白を含む正面向きのQR画像で再度試してください。");
+                return;
             }
+
+            lastCode = code;
+            qrVersion = code.version;
+            gridSize = 17 + 4 * qrVersion;
+            jsqrDecodedText = code.data || "";
+
+            initCanvas(gridSize);
+            qrMatrix = extractQRMatrixProjective(imageData, code.location, gridSize);
+            correctMatrix = qrMatrix.map(row => row.slice());
+            functionMask = buildFunctionMask(qrVersion, gridSize);
+
+            ecLevel = null;
+            formatResult = null;
+            blockSpec = null;
+            currentMaskID = 0;
+            maskSelect.value = "0";
+
+            drawGrid(qrMatrix);
+            clearOverlay();
+
+            logDisplay.innerHTML = "";
+            structDisplay.innerHTML = "";
+            binDisplay.innerHTML = "";
+            addLog(`読取成功: Version <span class="log-val">${qrVersion}</span> / Grid ${gridSize}×${gridSize}`);
+            addLog(`まずFormat Informationを読み、誤り訂正レベルとMask番号を特定します。`);
+
+            document.getElementById('btnFormat').disabled = false;
+            document.getElementById('btnMask').disabled = true;
+            document.getElementById('btnScan').disabled = true;
+            btnToggle.style.display = 'none';
+            btnToggle.disabled = false;
+            isViewMasked = true;
+            setStage("STEP 1", `Version ${qrVersion} を認識`, `QRは ${gridSize}×${gridSize} モジュールです。次に紫・橙のFormat Informationを読みます。`);
+            updateMeta();
         }
 
-        function extractQRMatrix(imgData, location, size) {
+        function solveLinearSystem(A, b) {
+            const n = b.length;
+            const M = A.map((row,i) => row.slice().concat(b[i]));
+            for (let col = 0; col < n; col++) {
+                let pivot = col;
+                for (let r = col + 1; r < n; r++) {
+                    if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+                }
+                if (Math.abs(M[pivot][col]) < 1e-12) throw new Error("Perspective transform is singular");
+                [M[col], M[pivot]] = [M[pivot], M[col]];
+                const div = M[col][col];
+                for (let c = col; c <= n; c++) M[col][c] /= div;
+                for (let r = 0; r < n; r++) {
+                    if (r === col) continue;
+                    const f = M[r][col];
+                    for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+                }
+            }
+            return M.map(row => row[n]);
+        }
+
+        function computeHomography(size, location) {
+            const src = [
+                [0,0], [size,0], [size,size], [0,size]
+            ];
+            const dst = [
+                location.topLeftCorner,
+                location.topRightCorner,
+                location.bottomRightCorner,
+                location.bottomLeftCorner
+            ];
+            const A = [], b = [];
+            for (let i = 0; i < 4; i++) {
+                const [x,y] = src[i], X = dst[i].x, Y = dst[i].y;
+                A.push([x,y,1, 0,0,0, -X*x,-X*y]); b.push(X);
+                A.push([0,0,0, x,y,1, -Y*x,-Y*y]); b.push(Y);
+            }
+            const h = solveLinearSystem(A,b);
+            return (x,y) => {
+                const den = h[6]*x + h[7]*y + 1;
+                return {
+                    x:(h[0]*x + h[1]*y + h[2]) / den,
+                    y:(h[3]*x + h[4]*y + h[5]) / den
+                };
+            };
+        }
+
+        function extractQRMatrixProjective(imgData, location, size) {
             const matrix = [];
-            const w = imgData.width;
-            const data = imgData.data;
-            const { topLeftCorner, topRightCorner, bottomRightCorner, bottomLeftCorner } = location;
+            const map = computeHomography(size, location);
+            const w = imgData.width, h = imgData.height, data = imgData.data;
+
+            const sampleLuma = (px,py) => {
+                const x = Math.max(0, Math.min(w-1, Math.round(px)));
+                const y = Math.max(0, Math.min(h-1, Math.round(py)));
+                const off = (y*w+x)*4;
+                return 0.299*data[off] + 0.587*data[off+1] + 0.114*data[off+2];
+            };
 
             for (let y = 0; y < size; y++) {
                 const row = [];
                 for (let x = 0; x < size; x++) {
-                    const u = (x + 0.5) / size;
-                    const v = (y + 0.5) / size;
-                    const topX = topLeftCorner.x + (topRightCorner.x - topLeftCorner.x) * u;
-                    const topY = topLeftCorner.y + (topRightCorner.y - topLeftCorner.y) * u;
-                    const bottomX = bottomLeftCorner.x + (bottomRightCorner.x - bottomLeftCorner.x) * u;
-                    const bottomY = bottomLeftCorner.y + (bottomRightCorner.y - bottomLeftCorner.y) * u;
-                    const px = Math.floor(topX + (bottomX - topX) * v);
-                    const py = Math.floor(topY + (bottomY - topY) * v);
-
-                    let isBlack = 0;
-                    if (px >= 0 && px < w && py >= 0 && py < imgData.height) {
-                        const offset = (py * w + px) * 4;
-                        if (data[offset] < 128) isBlack = 1; 
-                    }
-                    row.push(isBlack);
+                    const p = map(x + 0.5, y + 0.5);
+                    row.push(sampleLuma(p.x,p.y) < 128 ? 1 : 0);
                 }
                 matrix.push(row);
             }
@@ -328,84 +714,168 @@
         }
 
         async function stepFormatInfo() {
-            addLog("--- Format Info 解析 ---");
-            const res1 = await scanFormatBits(formatInfoCoords1);
-            const decoded1 = res1.val ^ FORMAT_INFO_MASK;
-            const mask1 = (decoded1 >> 10) & 0b111;
-            addLog(`Primary読取: Raw=0x${res1.val.toString(16)} -> <span class="log-code">Mask ${mask1}</span>`);
-            
-            const coords2 = getFormatInfoCoords2(gridSize);
-            const res2 = await scanFormatBits(coords2);
-            const decoded2 = res2.val ^ FORMAT_INFO_MASK;
-            const mask2 = (decoded2 >> 10) & 0b111;
-            addLog(`Backup読取: Raw=0x${res2.val.toString(16)} -> <span class="log-code">Mask ${mask2}</span>`);
+            document.getElementById('btnFormat').disabled = true;
+            structDisplay.innerHTML = "";
+            clearOverlay();
+            addLog("--- Format Information 解析 ---");
 
-            let finalDecision = mask1;
-            if (mask1 !== mask2) {
-                addLog(`<span class="log-err">不一致発生: Backup(Mask ${mask2})を優先採用します。</span>`);
-                finalDecision = mask2;
-            } else {
-                addLog(`<span class="log-ok">一致確認: Mask ${mask1} を採用します。</span>`);
+            const coords1 = getFormatInfoCoords1();
+            const coords2 = getFormatInfoCoords2(gridSize);
+
+            fillCells(coords1, "#9c88ff", 0.50);
+            fillCells(coords2, "#fab1a0", 0.38);
+            setStage("STEP 2", "Format Information を読む", "紫がPrimary、橙がBackupです。同じ15bit情報が2か所に保存されています。");
+            await sleep(350);
+
+            const raw1 = await scanFixedBits(coords1, "#9c88ff", "Primary Format");
+            const dec1 = decodeFormatBits(raw1);
+            addBlock("FORMAT 1", toBits(raw1,15), `0x${raw1.toString(16).toUpperCase().padStart(4,"0")}`, `${dec1.level} / Mask ${dec1.mask} / d=${dec1.distance}`, "type-format");
+            addLog(`Primary: EC=<span class="log-val">${dec1.level}</span>, Mask=<span class="log-val">${dec1.mask}</span>, BCH距離=${dec1.distance}`);
+
+            const raw2 = await scanFixedBits(coords2, "#fab1a0", "Backup Format");
+            const dec2 = decodeFormatBits(raw2);
+            addBlock("FORMAT 2", toBits(raw2,15), `0x${raw2.toString(16).toUpperCase().padStart(4,"0")}`, `${dec2.level} / Mask ${dec2.mask} / d=${dec2.distance}`, "type-format");
+            addLog(`Backup: EC=<span class="log-val">${dec2.level}</span>, Mask=<span class="log-val">${dec2.mask}</span>, BCH距離=${dec2.distance}`);
+
+            let chosen = dec1;
+            if (dec2.distance < dec1.distance) chosen = dec2;
+            else if (dec2.distance === dec1.distance && (dec1.level !== dec2.level || dec1.mask !== dec2.mask)) {
+                addLog(`<span class="log-warn">Format 2コピーが同距離で不一致です。Primaryを採用します。</span>`);
             }
 
-            maskSelect.value = finalDecision;
-            currentMaskID = finalDecision;
+            if (chosen.distance > 3) {
+                addLog(`<span class="log-err">Format InformationのBCH訂正能力(最大3bit)を超えています。結果は参考値です。</span>`);
+            }
+
+            ecLevel = chosen.level;
+            currentMaskID = chosen.mask;
+            formatResult = chosen;
+            maskSelect.value = String(currentMaskID);
+            blockSpec = getBlockSpec(qrVersion, ecLevel);
+
+            addBlock("EC LEVEL", chosen.ecBits.toString(2).padStart(2,"0"), "-", ecLevel, "type-info");
+            addBlock("MASK ID", chosen.mask.toString(2).padStart(3,"0"), "-", `Mask ${chosen.mask}`, "type-info");
+
+            if (qrVersion >= 7) {
+                await inspectVersionInformation();
+            }
+
+            updateMeta();
+            addLog(`<span class="log-ok">採用: Version ${qrVersion}-${ecLevel}, Mask ${currentMaskID}</span>`);
+            addLog(`RS構成: Data ${blockSpec.totalDataCodewords} CW / ECC ${blockSpec.totalEcCodewords} CW / ${blockSpec.blocks.length} block(s)`);
+
+            setStage("STEP 2", `EC Level ${ecLevel} / Mask ${currentMaskID}`, `15bitのFormat Informationから特定しました。次はMask ${currentMaskID} の規則に該当するデータ領域だけを反転します。`);
             document.getElementById('btnMask').disabled = false;
+            clearOverlay();
+            fillCells(coords1, "#9c88ff", 0.28);
+            fillCells(coords2, "#fab1a0", 0.22);
         }
 
-        async function scanFormatBits(coords) {
-            let rawBits = 0;
-            let duck = document.getElementById('duck-scanner');
+        async function inspectVersionInformation() {
+            const a = getVersionInfoCoordsA(gridSize);
+            const b = getVersionInfoCoordsB(gridSize);
+            clearOverlay();
+            fillCells(a, "#fab1a0", 0.45);
+            fillCells(b, "#fab1a0", 0.30);
+            setStage("VERSION", "Version Information を確認", `Version ${qrVersion} は7以上なので、18bitのVersion Informationも2か所にあります。`);
+            await sleep(250);
+
+            const rawA = readBitsLSB(a, qrMatrix);
+            const rawB = readBitsLSB(b, qrMatrix);
+            const da = decodeVersionBits(rawA), db = decodeVersionBits(rawB);
+            const best = db.distance < da.distance ? db : da;
+
+            addBlock("VERSION A", toBits(rawA,18), `0x${rawA.toString(16).toUpperCase().padStart(5,"0")}`, `V${da.version} / d=${da.distance}`, "type-version");
+            addBlock("VERSION B", toBits(rawB,18), `0x${rawB.toString(16).toUpperCase().padStart(5,"0")}`, `V${db.version} / d=${db.distance}`, "type-version");
+            if (best.version === qrVersion && best.distance <= 3) {
+                addLog(`<span class="log-ok">Version Information: V${best.version}（jsQR認識結果と一致）</span>`);
+            } else {
+                addLog(`<span class="log-warn">Version Informationの自己解析結果 V${best.version} / jsQR V${qrVersion}</span>`);
+            }
+        }
+
+        async function scanFixedBits(coords, color, label) {
+            let raw = 0;
+            const duck = document.getElementById('duck-scanner');
             duck.style.display = 'block';
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < coords.length; i++) {
                 const c = coords[i];
-                moveDuck(c.x, c.y);
-                rawBits = (rawBits << 1) | qrMatrix[c.y][c.x];
-                await sleep(20); // 少し速く
+                moveDuck(c.x,c.y);
+                raw |= (qrMatrix[c.y][c.x] & 1) << i;
+                clearCurrentOutline();
+                outlineCell(c.x,c.y,"#00d2d3",Math.max(1,Math.min(3,cellSize/3)));
+                setStage("READ", label, `${i+1} / ${coords.length} bit ＝ ${qrMatrix[c.y][c.x]}`);
+                await sleep(getFixedReadDelay());
             }
             duck.style.display = 'none';
-            return { val: rawBits };
+            return raw >>> 0;
+        }
+
+        function clearCurrentOutline() {
+            // Region fills are re-drawn by the caller only when needed.
+            // Current outline is kept lightweight; no full-canvas redraw is required here.
+        }
+
+        function getFixedReadDelay() {
+            const speed = Number(speedSlider.value);
+            return Math.max(18, (101-speed) * 4);
         }
 
         function applyMaskCalc() {
-            currentMaskID = parseInt(maskSelect.value);
+            currentMaskID = parseInt(maskSelect.value,10);
             const patternFunc = maskPatterns[currentMaskID];
-            correctMatrix = JSON.parse(JSON.stringify(qrMatrix));
+            correctMatrix = qrMatrix.map(row => row.slice());
             for(let y=0; y<gridSize; y++) {
                 for(let x=0; x<gridSize; x++) {
                     if (isFunctionPattern(x, y)) continue;
-                    if (patternFunc(x, y)) correctMatrix[y][x] = qrMatrix[y][x] ^ 1; 
+                    if (patternFunc(x, y)) correctMatrix[y][x] = qrMatrix[y][x] ^ 1;
                 }
             }
         }
 
         async function stepMask() {
+            document.getElementById('btnMask').disabled = true;
+            currentMaskID = parseInt(maskSelect.value,10);
             applyMaskCalc();
-            const tempMaskVis = JSON.parse(JSON.stringify(Array(gridSize).fill().map(()=>Array(gridSize).fill(0))));
+
+            clearOverlay();
             const patternFunc = maskPatterns[currentMaskID];
-             for(let y=0; y<gridSize; y++) {
+            let flipCount = 0;
+            for(let y=0; y<gridSize; y++) {
                 for(let x=0; x<gridSize; x++) {
-                    if (!isFunctionPattern(x,y) && patternFunc(x,y)) tempMaskVis[y][x] = 1;
+                    if (!isFunctionPattern(x,y) && patternFunc(x,y)) {
+                        fillCell(x,y,"#be2edd",0.52);
+                        flipCount++;
+                    } else if (isFunctionPattern(x,y)) {
+                        fillCell(x,y,"#485460",0.10);
+                    }
                 }
             }
-            
-            addLog(`マスク適用中... Pattern ${currentMaskID}`);
-            drawGrid(tempMaskVis, 'mask');
-            await sleep(400);
-            
+
+            addLog(`Mask ${currentMaskID}: 紫の ${flipCount} モジュールを反転（機能パターンは対象外）`);
+            setStage("STEP 3", `Mask ${currentMaskID} を解除`, "紫のマスだけ0↔1を反転します。Finder・Timing・Format・Alignmentなどの機能パターンは反転しません。");
+            await sleep(750);
+
             drawGrid(correctMatrix);
+            clearOverlay();
             isViewMasked = false;
-            
-            document.getElementById('btnMask').disabled = true;
+
             document.getElementById('btnScan').disabled = false;
             btnToggle.style.display = 'inline-block';
             updateToggleBtn();
-            addLog("マスク解除完了。");
+            updateMeta();
+            addLog("<span class='log-ok'>マスク解除完了。</span>");
+            setStage("STEP 3", "マスク解除完了", "次は右下から2列ずつジグザグにデータモジュールを読み、codeword列を復元します。");
         }
 
         function manualMaskChange() {
+            currentMaskID = parseInt(maskSelect.value,10);
             document.getElementById('btnMask').disabled = false;
             document.getElementById('btnScan').disabled = true;
+            clearOverlay();
+            if (formatResult && currentMaskID !== formatResult.mask) {
+                setStage("MANUAL", `Mask ${currentMaskID} を手動選択`, `Format Informationの解析結果は Mask ${formatResult.mask} です。手動値で再計算できます。`);
+            }
         }
 
         function toggleView() {
@@ -416,177 +886,489 @@
                 drawGrid(qrMatrix);
                 isViewMasked = true;
             }
+            clearOverlay();
             updateToggleBtn();
         }
 
         function updateToggleBtn() {
-            btnToggle.innerText = isViewMasked ? "👁️ 元画像" : "👁️ 解除後";
+            btnToggle.innerText = isViewMasked ? "👁️ 解除後を見る" : "👁️ 元画像を見る";
             btnToggle.style.background = isViewMasked ? "#ff5e57" : "#05c46b";
         }
 
         async function stepScan() {
+            if (!blockSpec || !ecLevel) {
+                addLog(`<span class="log-err">先にFormat Informationを解析してください。</span>`);
+                return;
+            }
+
             const duck = document.getElementById('duck-scanner');
             if(isViewMasked) toggleView();
             btnToggle.disabled = true;
             document.getElementById('btnScan').disabled = true;
-            duck.style.display = 'block';
-            
+            document.getElementById('btnFormat').disabled = true;
+
             binDisplay.innerHTML = "";
             structDisplay.innerHTML = "";
-            addLog("--- 解析開始 ---");
+            clearOverlay();
+            addLog("--- データ領域走査 ---");
 
-            let buffer = "";
-            let state = "MODE"; 
-            let dataLen = 0;
-            let currentCount = 0;
-            let decodedBytes = []; 
-            let modeType = "UNKNOWN";
+            const coords = getDataCoordinates();
+            const expectedBits = blockSpec.totalCodewords * 8 + blockSpec.remainderBits;
+            if (coords.length !== expectedBits) {
+                addLog(`<span class="log-err">機能パターン除外数が仕様と不一致: 実測 ${coords.length}bit / 期待 ${expectedBits}bit</span>`);
+            } else {
+                addLog(`データ領域 ${coords.length}bit = ${blockSpec.totalCodewords} codewords + remainder ${blockSpec.remainderBits}bit`);
+            }
 
-            let x = gridSize - 1;
-            let y = gridSize - 1;
-            let goingUp = true;
+            const rawBits = [];
+            const codewords = [];
+            duck.style.display = 'block';
 
-            while (x >= 0) {
-                if (x === 6) { x--; continue; } 
+            const renderEvery = Math.max(1, Math.ceil(coords.length / 1800));
+            let byteBuf = "";
 
-                for (let col = x; col >= x - 1; col--) {
-                    if (col < 0) break;
-                    
-                    if (!isFunctionPattern(col, y)) {
-                        moveDuck(col, y);
-                        const bitVal = correctMatrix[y][col];
-                        
-                        const bitSpan = document.createElement('span');
-                        bitSpan.innerText = bitVal;
-                        bitSpan.className = "bit bit-new";
-                        binDisplay.appendChild(bitSpan);
-                        binDisplay.scrollTop = binDisplay.scrollHeight;
+            for (let i = 0; i < coords.length; i++) {
+                const c = coords[i];
+                const bit = correctMatrix[c.y][c.x] & 1;
+                rawBits.push(bit);
 
-                        buffer += bitVal;
+                const isRemainder = i >= blockSpec.totalCodewords * 8;
+                const cwIndex = Math.floor(i / 8);
+                const isDataCW = !isRemainder && cwIndex < blockSpec.totalDataCodewords;
+                const color = isRemainder ? "#ffa801" : (isDataCW ? "#05c46b" : "#808e9b");
 
-                        // --- State Machine ---
-                        if (state === "MODE" && buffer.length === 4) {
-                            const modeVal = parseInt(buffer, 2);
-                            let modeStr = "Unknown";
-                            let color = "type-err";
-                            
-                            if(buffer === "0001") { modeStr = "Numeric"; modeType="NUM"; color="type-mode";}
-                            if(buffer === "0010") { modeStr = "AlphaNum"; modeType="ALPH"; color="type-mode";}
-                            if(buffer === "0100") { modeStr = "Byte"; modeType="BYTE"; color="type-mode";}
-                            if(buffer === "1000") { modeStr = "Kanji"; modeType="KANJI"; color="type-mode";}
-                            
-                            addBlock("MODE", buffer, `0x${modeVal.toString(16).toUpperCase()}`, modeStr, color);
-                            addLog(`Mode: ${modeStr}`);
-                            buffer = "";
-                            state = "LEN";
-                        }
-                        else if (state === "LEN") {
-                            let lenBits = 8;
-                            if (modeType === "NUM") lenBits = 10;
-                            if (modeType === "ALPH") lenBits = 9;
-                            
-                            if (buffer.length === lenBits) {
-                                dataLen = parseInt(buffer, 2);
-                                addBlock("LENGTH", buffer, `0x${dataLen.toString(16).toUpperCase()}`, `Len:${dataLen}`, "type-len");
-                                buffer = "";
-                                state = "DATA";
-                                if (dataLen === 0) state = "TERM";
-                            }
-                        }
-                        else if (state === "DATA") {
-                            let chunkBits = 8;
-                            if (modeType === "ALPH") chunkBits = 11;
-                            if (modeType === "KANJI") chunkBits = 13;
+                fillCell(c.x,c.y,color,isRemainder ? 0.35 : 0.20);
+                moveDuck(c.x,c.y);
 
-                            if (buffer.length === chunkBits) {
-                                const val = parseInt(buffer, 2);
-                                const hexVal = "0x" + val.toString(16).toUpperCase();
-                                let charDisp = ".";
-                                
-                                if (modeType === "BYTE") {
-                                    decodedBytes.push(val);
-                                    if (val >= 32 && val <= 126) charDisp = String.fromCharCode(val);
-                                }
-                                addBlock(`DATA ${currentCount+1}`, buffer, hexVal, charDisp, "type-data");
-                                currentCount++;
-                                buffer = "";
+                const bitSpan = document.createElement('span');
+                bitSpan.textContent = bit;
+                bitSpan.className = `bit bit-new ${isRemainder ? "bit-rem" : (isDataCW ? "bit-data" : "bit-ecc")}`;
+                binDisplay.appendChild(bitSpan);
 
-                                if (currentCount >= dataLen) {
-                                    state = "TERM";
-                                    if (modeType === "BYTE") {
-                                        try {
-                                            const finalDec = new TextDecoder("utf-8").decode(new Uint8Array(decodedBytes));
-                                            addLog(`★デコード結果: <span class="log-val">${finalDec}</span>`);
-                                        } catch(e) {}
-                                    }
-                                }
-                            }
-                        }
-                        else if (state === "TERM") {
-                            if (buffer.length === 4) {
-                                addBlock("TERM", buffer, "-", "END", "type-term");
-                                buffer = "";
-                                state = "ECC";
-                            }
-                        }
-                        else if (state === "ECC") {
-                            // --- ここが修正ポイント: END後も中身をちゃんと表示 ---
-                            if (buffer.length === 8) {
-                                const val = parseInt(buffer, 2);
-                                const hex = "0x" + val.toString(16).toUpperCase().padStart(2,'0');
-                                
-                                // Padding判定 (0xEC or 0x11)
-                                let label = "ECC";
-                                let color = "type-ecc";
-                                let desc = "-";
-                                
-                                if (val === 0xEC || val === 0x11) {
-                                    label = "PAD";
-                                    color = "type-pad";
-                                    desc = (val === 0xEC) ? "11101100" : "00010001";
-                                }
-
-                                addBlock(label, buffer, hex, desc, color);
-                                buffer = "";
-                            }
-                        }
-
-                        const speed = document.getElementById('speedSlider').value;
-                        const waitTime = Math.max(2, (100 - speed) * 3);
-                        await sleep(waitTime);
-                        bitSpan.className = "bit bit-processed";
+                if (!isRemainder) {
+                    byteBuf += bit;
+                    if (byteBuf.length === 8) {
+                        codewords.push(parseInt(byteBuf,2));
+                        byteBuf = "";
                     }
                 }
-                if (goingUp) {
-                    y--;
-                    if (y < 0) { y = 0; x -= 2; goingUp = false; }
+
+                if (i % 8 === 7 || isRemainder) {
+                    const what = isRemainder ? "Remainder bit" : (isDataCW ? "Data codeword" : "ECC codeword");
+                    setStage("STEP 4", "右下からジグザグ走査", `${what}: ${Math.min(cwIndex+1, blockSpec.totalCodewords)} / ${blockSpec.totalCodewords}`);
+                    binDisplay.scrollTop = binDisplay.scrollHeight;
+                }
+
+                const speed = Number(speedSlider.value);
+                const wait = Math.max(0, Math.round((100-speed) * 0.8));
+                if (i % renderEvery === 0 && wait > 0) await sleep(wait);
+                bitSpan.classList.remove("bit-new");
+            }
+
+            duck.style.display = 'none';
+
+            if (codewords.length !== blockSpec.totalCodewords) {
+                addLog(`<span class="log-err">Codeword数不一致: ${codewords.length} / ${blockSpec.totalCodewords}</span>`);
+            }
+
+            addLog(`物理codeword列を取得: ${codewords.length} CW`);
+            setStage("DEINT", "RSブロックをデインターリーブ", "複数RSブロックではData/ECCがインターリーブされています。まず元の論理Data順へ戻します。");
+            await sleep(250);
+
+            const deint = deinterleaveCodewords(codewords, blockSpec);
+            addLog(`Data ${deint.dataBytes.length} CW / ECC ${deint.eccBytes.length} CW を分離`);
+
+            addLog("--- データストリーム構造解析 ---");
+            setStage("PARSE", "Data codewordを論理順に解析", "MODE → LENGTH → DATA → Terminator → Pad の順に読みます。");
+            await sleep(250);
+
+            const parsed = parseDataStream(deint.dataBytes, qrVersion);
+
+            // Data領域の後に、実際の物理順でECC codewordを表示。
+            // PAD/ECCの区別は値ではなくRSブロック仕様上の位置で確定する。
+            const physicalEcc = codewords.slice(blockSpec.totalDataCodewords);
+            const eccDisplayLimit = physicalEcc.length <= 120 ? physicalEcc.length : 60;
+            for (let i = 0; i < eccDisplayLimit; i++) {
+                const val = physicalEcc[i];
+                addBlock(`ECC ${i+1}`,
+                    val.toString(2).padStart(8,"0"),
+                    "0x"+val.toString(16).toUpperCase().padStart(2,"0"),
+                    "-",
+                    "type-ecc");
+            }
+            if (physicalEcc.length > eccDisplayLimit) {
+                addBlock("ECC ...", "-", "-", `残り ${physicalEcc.length-eccDisplayLimit} CW`, "type-info");
+            }
+            if (blockSpec.remainderBits > 0) {
+                const rem = rawBits.slice(blockSpec.totalCodewords*8).join("");
+                addBlock("REMAINDER", rem, "-", `${blockSpec.remainderBits} bit`, "type-term");
+            }
+
+            const rsChecks = verifyRSBlocks(deint.blocks);
+            const badBlocks = rsChecks.filter(x => !x.ok);
+            for (let i = 0; i < Math.min(rsChecks.length, 24); i++) {
+                const r = rsChecks[i];
+                addBlock(`RS BLOCK ${i+1}`, "-", `${r.ecCount} ECC`, r.ok ? "ECC OK" : `${r.mismatches} mismatch`, r.ok ? "type-info" : "type-warn");
+            }
+            if (rsChecks.length > 24) {
+                addBlock("RS BLOCKS", "-", "-", `${rsChecks.length} blocks / ${badBlocks.length} error`, badBlocks.length ? "type-warn" : "type-info");
+            }
+            if (badBlocks.length === 0) {
+                addLog(`<span class="log-ok">Reed-Solomon検証: 全${rsChecks.length}ブロックのECCが一致。</span>`);
+            } else {
+                addLog(`<span class="log-warn">Reed-Solomon検証: ${badBlocks.length}/${rsChecks.length}ブロックで不一致。画像サンプリングに誤りがある可能性があります。</span>`);
+            }
+
+            if (parsed.text !== null) {
+                addLog(`★自己解析結果: <span class="log-val">${escapeHtml(parsed.text)}</span>`);
+            }
+            if (jsqrDecodedText) {
+                if (parsed.text === jsqrDecodedText) {
+                    addLog(`<span class="log-ok">jsQRのデコード結果とも一致しました。</span>`);
                 } else {
-                    y++;
-                    if (y >= gridSize) { y = gridSize - 1; x -= 2; goingUp = true; }
+                    addLog(`<span class="log-warn">参考: jsQR結果「${escapeHtml(jsqrDecodedText)}」</span>`);
                 }
             }
-            // 余りビット
-            if (buffer.length > 0) addBlock("ECC/PAD", buffer, "-", "-", "type-ecc");
-            
-            duck.style.display = 'none';
+
             btnToggle.disabled = false;
-            addLog("全データ走査完了。");
+            document.getElementById('btnScan').disabled = false;
+            setStage("DONE", "解析完了", `Version ${qrVersion}-${ecLevel} / Mask ${currentMaskID} / ${blockSpec.totalCodewords} codewords を仕様に沿って解析しました。`);
+            addLog("<span class='log-ok'>全データ走査完了。</span>");
+        }
+
+        function deinterleaveCodewords(codewords, spec) {
+            const blocks = spec.blocks.map(b => ({...b, data:[], ecc:[]}));
+            let pos = 0;
+            const maxData = Math.max(...blocks.map(b => b.dataCount));
+            for (let i = 0; i < maxData; i++) {
+                for (const b of blocks) {
+                    if (i < b.dataCount && pos < codewords.length) b.data.push(codewords[pos++]);
+                }
+            }
+            const maxEcc = Math.max(...blocks.map(b => b.ecCount));
+            for (let i = 0; i < maxEcc; i++) {
+                for (const b of blocks) {
+                    if (i < b.ecCount && pos < codewords.length) b.ecc.push(codewords[pos++]);
+                }
+            }
+            return {
+                blocks,
+                dataBytes: blocks.flatMap(b => b.data),
+                eccBytes: blocks.flatMap(b => b.ecc)
+            };
+        }
+
+        const GF_EXP = new Array(512).fill(0);
+        const GF_LOG = new Array(256).fill(0);
+        (function initGF256() {
+            let x = 1;
+            for (let i = 0; i < 255; i++) {
+                GF_EXP[i] = x;
+                GF_LOG[x] = i;
+                x <<= 1;
+                if (x & 0x100) x ^= 0x11D;
+            }
+            for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+        })();
+
+        function gfMul(a,b) {
+            if (a === 0 || b === 0) return 0;
+            return GF_EXP[GF_LOG[a] + GF_LOG[b]];
+        }
+
+        function polyMultiply(a,b) {
+            const out = new Array(a.length + b.length - 1).fill(0);
+            for (let i=0;i<a.length;i++) {
+                for (let j=0;j<b.length;j++) out[i+j] ^= gfMul(a[i],b[j]);
+            }
+            return out;
+        }
+
+        const rsGeneratorCache = new Map();
+        function rsGenerator(degree) {
+            if (rsGeneratorCache.has(degree)) return rsGeneratorCache.get(degree);
+            let poly = [1];
+            for (let i=0;i<degree;i++) poly = polyMultiply(poly,[1,GF_EXP[i]]);
+            rsGeneratorCache.set(degree,poly);
+            return poly;
+        }
+
+        function computeRSEcc(data, ecCount) {
+            const gen = rsGenerator(ecCount);
+            const work = data.slice().concat(new Array(ecCount).fill(0));
+            for (let i=0;i<data.length;i++) {
+                const coef = work[i];
+                if (coef === 0) continue;
+                for (let j=0;j<gen.length;j++) work[i+j] ^= gfMul(gen[j],coef);
+            }
+            return work.slice(data.length);
+        }
+
+        function verifyRSBlocks(blocks) {
+            return blocks.map(b => {
+                const expected = computeRSEcc(b.data,b.ecCount);
+                let mismatches = 0;
+                for (let i=0;i<b.ecCount;i++) if (expected[i] !== b.ecc[i]) mismatches++;
+                return { ok:mismatches===0, mismatches, ecCount:b.ecCount, expected };
+            });
+        }
+
+        class BitReader {
+            constructor(bytes) { this.bytes = bytes; this.pos = 0; this.length = bytes.length * 8; }
+            available() { return this.length - this.pos; }
+            read(n) {
+                if (n < 0 || this.pos + n > this.length) throw new Error("bitstream underrun");
+                let v = 0;
+                for (let i = 0; i < n; i++) {
+                    const bitPos = this.pos++;
+                    const b = this.bytes[Math.floor(bitPos/8)];
+                    v = (v << 1) | ((b >> (7-(bitPos%8))) & 1);
+                }
+                return v >>> 0;
+            }
+            readBitsString(n) {
+                let s="";
+                for (let i=0;i<n;i++) s += this.read(1);
+                return s;
+            }
+            peek(n) {
+                const p=this.pos, v=this.read(n); this.pos=p; return v;
+            }
+        }
+
+        function getCountBits(mode, version) {
+            const group = version <= 9 ? 0 : (version <= 26 ? 1 : 2);
+            const table = {
+                NUM:   [10,12,14],
+                ALPH:  [9,11,13],
+                BYTE:  [8,16,16],
+                KANJI: [8,10,12],
+                HANZI: [8,10,12]
+            };
+            return table[mode]?.[group] ?? 0;
+        }
+
+        function decodeByteSegment(bytes, eci) {
+            const encMap = {
+                3:"iso-8859-1",
+                20:"shift_jis",
+                25:"utf-16be",
+                26:"utf-8",
+                28:"big5",
+                29:"gb18030",
+                30:"euc-kr"
+            };
+            if (eci && encMap[eci]) {
+                try { return new TextDecoder(encMap[eci]).decode(new Uint8Array(bytes)); } catch(e) {}
+            }
+            try {
+                const utf8 = new TextDecoder("utf-8", {fatal:true}).decode(new Uint8Array(bytes));
+                if (/[^\x00-\x7F]/.test(utf8)) return utf8;
+            } catch(e) {}
+            try { return new TextDecoder("iso-8859-1").decode(new Uint8Array(bytes)); }
+            catch(e) { return bytes.map(b => String.fromCharCode(b)).join(""); }
+        }
+
+        function decodeKanjiValue(v) {
+            const assembled = ((Math.floor(v / 0xC0)) << 8) | (v % 0xC0);
+            const sjis = assembled < 0x1F00 ? assembled + 0x8140 : assembled + 0xC140;
+            try { return new TextDecoder("shift_jis").decode(new Uint8Array([sjis >> 8, sjis & 0xFF])); }
+            catch(e) { return "□"; }
+        }
+
+        function decodeHanziValue(v) {
+            const assembled = ((Math.floor(v / 0x60)) << 8) | (v % 0x60);
+            const gb = assembled < 0x0A00 ? assembled + 0xA1A1 : assembled + 0xA6A1;
+            try { return new TextDecoder("gb18030").decode(new Uint8Array([gb >> 8, gb & 0xFF])); }
+            catch(e) { return "□"; }
+        }
+
+        function parseECIAssignment(reader) {
+            const first = reader.read(8);
+            if ((first & 0x80) === 0) return first & 0x7F;
+            if ((first & 0xC0) === 0x80) return ((first & 0x3F) << 8) | reader.read(8);
+            if ((first & 0xE0) === 0xC0) return ((first & 0x1F) << 16) | reader.read(16);
+            throw new Error("invalid ECI designator");
+        }
+
+        function parseDataStream(dataBytes, version) {
+            const reader = new BitReader(dataBytes);
+            let out = "";
+            let currentECI = null;
+            let terminated = false;
+            let segmentNo = 0;
+
+            while (reader.available() >= 4) {
+                const modeStart = reader.pos;
+                const modeBits = reader.readBitsString(4);
+                segmentNo++;
+
+                if (modeBits === "0000") {
+                    addBlock("TERM", modeBits, "-", "END", "type-term");
+                    terminated = true;
+                    break;
+                }
+
+                const modeMap = {
+                    "0001":["NUM","Numeric"],
+                    "0010":["ALPH","AlphaNum"],
+                    "0011":["STRUCT","Structured Append"],
+                    "0100":["BYTE","Byte"],
+                    "0101":["FNC1_1","FNC1 First"],
+                    "0111":["ECI","ECI"],
+                    "1000":["KANJI","Kanji"],
+                    "1001":["FNC1_2","FNC1 Second"],
+                    "1101":["HANZI","Hanzi"]
+                };
+                const mode = modeMap[modeBits];
+                if (!mode) {
+                    addBlock("MODE", modeBits, `0x${parseInt(modeBits,2).toString(16).toUpperCase()}`, "Unknown", "type-warn");
+                    addLog(`<span class="log-warn">未知MODE ${modeBits}。以降の論理解釈を停止します。</span>`);
+                    break;
+                }
+
+                addBlock("MODE", modeBits, `0x${parseInt(modeBits,2).toString(16).toUpperCase()}`, mode[1], "type-mode");
+
+                if (mode[0] === "ECI") {
+                    try {
+                        const before = reader.pos;
+                        currentECI = parseECIAssignment(reader);
+                        const consumed = reader.pos-before;
+                        addBlock("ECI", "-", `ECI ${currentECI}`, `${consumed} bits`, "type-info");
+                    } catch(e) {
+                        addLog(`<span class="log-err">ECI解析失敗</span>`);
+                        break;
+                    }
+                    continue;
+                }
+
+                if (mode[0] === "FNC1_1") {
+                    addBlock("FNC1", "-", "-", "First Position", "type-info");
+                    continue;
+                }
+
+                if (mode[0] === "FNC1_2") {
+                    if (reader.available() < 8) break;
+                    const app = reader.read(8);
+                    addBlock("FNC1", app.toString(2).padStart(8,"0"), `0x${app.toString(16).toUpperCase().padStart(2,"0")}`, "Second Position", "type-info");
+                    continue;
+                }
+
+                if (mode[0] === "STRUCT") {
+                    if (reader.available() < 16) break;
+                    const symbol = reader.read(4);
+                    const totalMinus1 = reader.read(4);
+                    const parity = reader.read(8);
+                    addBlock("STRUCT", `${symbol.toString(2).padStart(4,"0")}${totalMinus1.toString(2).padStart(4,"0")}`, `0x${parity.toString(16).toUpperCase().padStart(2,"0")}`, `${symbol+1}/${totalMinus1+1}`, "type-info");
+                    continue;
+                }
+
+                let subset = null;
+                if (mode[0] === "HANZI") {
+                    if (reader.available() < 4) break;
+                    subset = reader.read(4);
+                    addBlock("HANZI SUB", subset.toString(2).padStart(4,"0"), `0x${subset.toString(16).toUpperCase()}`, `Subset ${subset}`, "type-info");
+                }
+
+                const countBits = getCountBits(mode[0], version);
+                if (!countBits || reader.available() < countBits) break;
+                const countBin = reader.readBitsString(countBits);
+                const count = parseInt(countBin,2);
+                addBlock("LENGTH", countBin, `0x${count.toString(16).toUpperCase()}`, `Len:${count}`, "type-len");
+
+                let segmentText = "";
+
+                if (mode[0] === "NUM") {
+                    let remain = count, idx = 1;
+                    while (remain >= 3) {
+                        if (reader.available() < 10) break;
+                        const bits = reader.readBitsString(10);
+                        const val = parseInt(bits,2);
+                        const txt = String(val).padStart(3,"0");
+                        addBlock(`DATA ${idx++}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt; remain -= 3;
+                    }
+                    if (remain === 2 && reader.available() >= 7) {
+                        const bits=reader.readBitsString(7), val=parseInt(bits,2), txt=String(val).padStart(2,"0");
+                        addBlock(`DATA ${idx++}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt;
+                    } else if (remain === 1 && reader.available() >= 4) {
+                        const bits=reader.readBitsString(4), val=parseInt(bits,2), txt=String(val);
+                        addBlock(`DATA ${idx++}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt;
+                    }
+                }
+                else if (mode[0] === "ALPH") {
+                    let remain=count, idx=1;
+                    while (remain >= 2) {
+                        if (reader.available() < 11) break;
+                        const bits=reader.readBitsString(11), val=parseInt(bits,2);
+                        const txt = (ALPHANUM[Math.floor(val/45)] ?? "?") + (ALPHANUM[val%45] ?? "?");
+                        addBlock(`DATA ${idx++}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt; remain -= 2;
+                    }
+                    if (remain === 1 && reader.available() >= 6) {
+                        const bits=reader.readBitsString(6), val=parseInt(bits,2), txt=ALPHANUM[val] ?? "?";
+                        addBlock(`DATA ${idx++}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt;
+                    }
+                }
+                else if (mode[0] === "BYTE") {
+                    const bytes=[];
+                    for (let i=0; i<count && reader.available()>=8; i++) {
+                        const bits=reader.readBitsString(8), val=parseInt(bits,2);
+                        bytes.push(val);
+                        const printable = val >= 32 && val <= 126 ? String.fromCharCode(val) : "·";
+                        addBlock(`DATA ${i+1}`, bits, `0x${val.toString(16).toUpperCase().padStart(2,"0")}`, printable, "type-data");
+                    }
+                    segmentText = decodeByteSegment(bytes,currentECI);
+                }
+                else if (mode[0] === "KANJI") {
+                    for (let i=0;i<count && reader.available()>=13;i++) {
+                        const bits=reader.readBitsString(13), val=parseInt(bits,2), txt=decodeKanjiValue(val);
+                        addBlock(`DATA ${i+1}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt;
+                    }
+                }
+                else if (mode[0] === "HANZI") {
+                    for (let i=0;i<count && reader.available()>=13;i++) {
+                        const bits=reader.readBitsString(13), val=parseInt(bits,2), txt=decodeHanziValue(val);
+                        addBlock(`DATA ${i+1}`, bits, `0x${val.toString(16).toUpperCase()}`, txt, "type-data");
+                        segmentText += txt;
+                    }
+                }
+
+                out += segmentText;
+            }
+
+            // Terminator後: byte境界までの0埋め
+            if (terminated) {
+                const alignCount = (8 - (reader.pos % 8)) % 8;
+                if (alignCount && reader.available() >= alignCount) {
+                    const bits = reader.readBitsString(alignCount);
+                    addBlock("ALIGN", bits, "-", bits.split("").every(b=>b==="0") ? "zero fill" : "non-zero?", bits.split("").every(b=>b==="0") ? "type-term" : "type-warn");
+                }
+            }
+
+            // 残りはData codeword領域内のPad codeword。値ではなく「位置」で判定する。
+            let padNo = 0;
+            let expectedPad = 0xEC;
+            while (reader.available() >= 8) {
+                const bits = reader.readBitsString(8);
+                const val = parseInt(bits,2);
+                padNo++;
+                const ok = val === expectedPad;
+                addBlock(`PAD ${padNo}`, bits, `0x${val.toString(16).toUpperCase().padStart(2,"0")}`, ok ? "OK" : `期待 0x${expectedPad.toString(16).toUpperCase()}`, ok ? "type-pad" : "type-warn");
+                expectedPad = expectedPad === 0xEC ? 0x11 : 0xEC;
+            }
+
+            return { text: out, remainingBits: reader.available() };
         }
 
         function moveDuck(x, y) {
             const duck = document.getElementById('duck-scanner');
-            duck.style.left = (x * cellSize + cellSize / 2) + 'px';
-            duck.style.top = (y * cellSize + cellSize / 2) + 'px';
-        }
-
-        function isFunctionPattern(x, y) {
-            if (x < 9 && y < 9) return true;
-            if (x > gridSize - 9 && y < 9) return true;
-            if (x < 9 && y > gridSize - 9) return true;
-            if (x == 6 || y == 6) return true;
-            if (gridSize > 21 && x > gridSize - 10 && x < gridSize - 4 && y > gridSize - 10 && y < gridSize - 4) return true;
-            if (isFormatInfoPixel(x, y, 1) || isFormatInfoPixel(x, y, 2)) return true;
-            return false;
+            duck.style.left = (10 + x * cellSize + cellSize / 2) + 'px';
+            duck.style.top = (10 + y * cellSize + cellSize / 2) + 'px';
         }
 
         function addLog(htmlText) {
@@ -596,23 +1378,39 @@
             logDisplay.appendChild(div);
             logDisplay.scrollTop = logDisplay.scrollHeight;
         }
-        
+
         function addBlock(label, bin, hex, char, colorClass) {
             const div = document.createElement('div');
             div.className = `bit-block ${colorClass}`;
             div.innerHTML = `
-                <span class="blk-label">${label}</span>
-                <span class="blk-bin">${bin}</span>
-                <span class="blk-hex">${hex}</span>
-                <span class="blk-char">${char}</span>
+                <span class="blk-label">${escapeHtml(label)}</span>
+                <span class="blk-bin">${escapeHtml(bin)}</span>
+                <span class="blk-hex">${escapeHtml(hex)}</span>
+                <span class="blk-char">${escapeHtml(char)}</span>
             `;
             structDisplay.appendChild(div);
             structDisplay.scrollTop = structDisplay.scrollHeight;
         }
 
+        function escapeHtml(value) {
+            return String(value ?? "")
+                .replaceAll("&","&amp;")
+                .replaceAll("<","&lt;")
+                .replaceAll(">","&gt;")
+                .replaceAll('"',"&quot;")
+                .replaceAll("'","&#039;");
+        }
+
+        function toBits(value, width) {
+            let s = "";
+            for (let i = width - 1; i >= 0; i--) s += ((value >>> i) & 1);
+            return s;
+        }
+
         function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-        
+
         initCanvas();
+        updateMeta();
     </script>
 </body>
 </html>
